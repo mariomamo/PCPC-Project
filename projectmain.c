@@ -2,10 +2,12 @@
 #include <stdlib.h>
 #include <mpi.h>
 #include <string.h>
-#define NUM_PROCESSES 13
+#include <unistd.h>
+#define NUM_PROCESSES 3
 #define MAX_FILE_LIST_SIZE 100
 #define MAX_FILE_NAME_LENGTH 255
-#define FILE_NUMBER 5
+#define FILE_NUMBER 3
+#define TASK_ARRAY_SIZE 2
 #define MIN(a,b) (((a)<(b))?(a):(b))
 
 typedef struct {
@@ -17,7 +19,11 @@ typedef struct {
     char fileName[MAX_FILE_NAME_LENGTH];
     long startFromBytes;
     long endToBytes;
-} FileToReadInfo;
+} FileInfoToRead;
+
+typedef struct {
+    FileInfoToRead *filesToRead[MAX_FILE_LIST_SIZE];
+} Task;
 
 int getFileSize(char *fileName) {
     char file[MAX_FILE_NAME_LENGTH] = "";
@@ -29,19 +35,19 @@ int getFileSize(char *fileName) {
 }
 
 FileInfo* getFilesInfos() {
-    char *fileNames[MAX_FILE_NAME_LENGTH] = {
-        "files/610_parole_HP",
-        "files/1000_parole_italiane",
-        "files/6000_parole_italiane",
-        "files/280000_parole_italiane",
-        "files/test"
-    };
-
     // char *fileNames[MAX_FILE_NAME_LENGTH] = {
-    //     "files/test",
-    //     "files/test2",
-    //     "files/test3"
+    //     "files/610_parole_HP",
+    //     "files/1000_parole_italiane",
+    //     "files/6000_parole_italiane",
+    //     "files/280000_parole_italiane",
+    //     "files/test"
     // };
+
+    char *fileNames[MAX_FILE_NAME_LENGTH] = {
+        "files/test",
+        "files/test2",
+        "files/test3"
+    };
 
     FileInfo *filesInfos = malloc(FILE_NUMBER * sizeof(FileInfo));
     int i = 0;
@@ -79,151 +85,193 @@ int getTotalBytesFromFiles(FileInfo *fileInfo, int fileNumber) {
     return totalBytes;
 }
 
-// void divideFilesBetweenProcesses(FileInfo *filesInfos, int bytesNumber, int numProcesses, int numFiles) {
-//     int bytesPerProcess = bytesNumber / numProcesses; // TODO: Attento al resto
-//     printf("Each process will read %d bytes\n", bytesPerProcess);
-//     FileToReadInfo fileToReadInfoList[MAX_FILE_LIST_SIZE];
-//     int partialBytesPerProcess = 0;
+long* getNumberOfElementsPerProcess(int process_number, int elements_number) {
+    if (process_number > elements_number) {
+        // Errore divisione
+        process_number = elements_number;
+    }
+    long resto = elements_number % process_number;
+    long elements_per_process = elements_number / process_number;
+    long *arrayOfElements = malloc(sizeof(int) * process_number);
+
+    int i;
+    for (i = 0; i < process_number; i++) {
+        arrayOfElements[i] = i < resto ? elements_per_process + 1 : elements_per_process;
+    }
+    
+    return arrayOfElements;   
+}
+
+void logMessage(char *message, int rank) {
+    char msg[1024];
+    sprintf(msg, "[Processo %d] >> %s", rank, message);
+    write(1, &msg, strlen(msg)+1);
+    fflush(stdin);
+}
+
+void printArray(long *values, int my_rank, int size) {
+    int i;
+    char msg[50];
+
+    for (i = 0; i < size; i++) {
+        sprintf(msg, "values[%d]: %ld\n", i, values[i]);
+        logMessage(msg, my_rank);
+    }
+}
+
+int thereAreFilesToSplit(int index, int numFiles, int processIndex) {
+    return index < numFiles && processIndex < NUM_PROCESSES ? 1 : 0;
+}
+
+int getRemainingBytesToSend(FileInfo fileInfo, int startOffset) {
+    return fileInfo.fileSize - startOffset;
+}
+
+int fileSizeIsEqualToRemainingBytesToRead(FileInfo fileInfo, int startOffset, int remainingBytesToRead) {
+    return fileInfo.fileSize - startOffset == remainingBytesToRead ? 1 : 0;
+}
+
+int canProcessReadWholeFile(FileInfo fileInfo, int startOffset, int remainingBytesToRead) {
+    return getRemainingBytesToSend(fileInfo, startOffset) < remainingBytesToRead ? 1 : 0;
+}
+
+void setFileToReadInfo(FileInfoToRead *fileInfoToRead, FileInfo fileInfo, int startOffset, int endToBytes) {
+    strcpy(fileInfoToRead -> fileName, fileInfo.fileName);
+    fileInfoToRead -> startFromBytes = startOffset;
+    fileInfoToRead -> endToBytes = endToBytes - 1;
+}
+
+int isFileEnded(int sendedBytes, FileInfo fileInfo, int startOffset) {
+    return sendedBytes == (fileInfo.fileSize - startOffset) ? 1 : 0;
+}
+
+int getSendedBytes(int endToBytes, int startFromBytes) {
+    return endToBytes - startFromBytes;
+}
+
+long addTask(FileInfoToRead *taskArray, long taskArraySize, FileInfoToRead newTask, int taskArrayIndex) {
+    printf("Addo %s\n", newTask.fileName);
+    if (taskArraySize <= taskArrayIndex) {
+        taskArraySize += TASK_ARRAY_SIZE;
+        taskArray = realloc(taskArray, taskArraySize * sizeof(FileInfoToRead));
+    }
+    taskArray[taskArrayIndex] = newTask;
+    return taskArraySize;
+}
+
+// void printFileInfoToReadArray(FileInfoToRead *fileInfoToRead, long fileInfoToReadArraySize) {
 //     int i = 0;
-//     int process = 0;
-//     int startFrom = 0;
-//     int remaining = 0;
-//     int end = 0;
-//     while ((partialBytesPerProcess <= bytesPerProcess) && i <= numFiles && process < NUM_PROCESSES) {
-//         printf("%d\n", (partialBytesPerProcess <= bytesPerProcess) && i <= numFiles && process < NUM_PROCESSES);
-//         FileToReadInfo fileToReadInfo;
-//         // printf(">>> %s\n", filesInfos[i].fileName);
-//         strcpy(fileToReadInfo.fileName, filesInfos[i].fileName);
-//         if (partialBytesPerProcess + (filesInfos[i].fileSize - startFrom) <= bytesPerProcess) {
-//             printf("START FROM %d\n", startFrom);
-//             partialBytesPerProcess += filesInfos[i].fileSize;
-//             fileToReadInfo.startFromBytes = startFrom;
-//             startFrom = 0;
-//             fileToReadInfo.endToBytes = filesInfos[i].fileSize;
-//             i++;
-//             printf("%s CI VA TUTTO\n", fileToReadInfo.fileName);
-//             printf("Process %d read from %ld to %ld\n", process, fileToReadInfo.startFromBytes, fileToReadInfo.endToBytes);
-//         }
-//         else {
-//             fileToReadInfo.startFromBytes = startFrom;
-//             startFrom = bytesPerProcess - partialBytesPerProcess + 1;
-//             fileToReadInfo.endToBytes = bytesPerProcess - partialBytesPerProcess;
-//             remaining = filesInfos[i].fileSize - fileToReadInfo.endToBytes;
-//             printf(">>> REMAINING 1 <<< %d\n", remaining);
-//             printf(">>> END TO BYTES <<< %ld\n", fileToReadInfo.endToBytes);
-//             printf("%s CI VA SOLO %d\n", fileToReadInfo.fileName, bytesPerProcess - partialBytesPerProcess);
-//             printf("%s RESTA %d\n", fileToReadInfo.fileName, remaining);
-//             printf("Process %d read from %ld to %ld\n", process, fileToReadInfo.startFromBytes, fileToReadInfo.endToBytes);
-//             if (partialBytesPerProcess == bytesPerProcess) {
-//                 printf("PROCESS FULL\n");
-//                 partialBytesPerProcess = 0;
-//                 // printf(">>>> PARTIAL BYTES PER PROCESS = %d\n", partialBytesPerProcess);
-//                 process++;
-//             } else { // QUA NON ENTRA MAI
-//                 printf(">>> NAME <<< %s\n", filesInfos[i].fileName);
-//                 printf(">>> REMAINING 2 <<< %d\n", remaining);
-//                 partialBytesPerProcess += (bytesPerProcess - partialBytesPerProcess);
-//                 partialBytesPerProcess = partialBytesPerProcess % bytesPerProcess;
-//                 printf(">>> NAME <<< %s\n", filesInfos[i].fileName);
-//                 end++;
-//                 if (end == 2) {
-//                     i++;
-//                 }
-//                 if (remaining == 0) {
-//                     i++; //QUANDO DEVO FARE i++? SEMPRE? NON CREDO
-//                 }
-//                 printf("===== %d - %d\n", partialBytesPerProcess, bytesPerProcess);
-//                 printf("<<>>>> PARTIAL BYTES PER PROCESS = %d\n", partialBytesPerProcess);
-//                 startFrom = 0;
-//             }
-//         }
+//     for (i = 0; i < fileInfoToReadArraySize; i++) {
+//         printf("FILE NAME: %s\n", fileInfoToRead[i].fileName);
 //     }
+// }
+
+// void printTaskArray(Task* taskArray, long taskArraySize) {
+//     int i = 0;
+//     for (i = 0; i < taskArraySize; i++) {
+//         printFileInfoToReadArray(taskArray[i].filesToRead, 1);
+//     }
+// }
 
 void divideFilesBetweenProcesses(FileInfo *filesInfos, int bytesNumber, int numProcesses, int numFiles) {
-    long bytesPerProcess = bytesNumber / numProcesses; // ATTENTO AL RESTO
-    printf("Each process will read %ld bytes\n", bytesPerProcess);
-    long remainingBytesToRead = bytesPerProcess;
+    long taskArraySize = TASK_ARRAY_SIZE;
+    Task *taskArray = calloc(sizeof(FileInfoToRead), TASK_ARRAY_SIZE);
+    Task t;
+    // printTaskArray(taskArray, taskArraySize);
+    long *arrayBytesPerProcess = getNumberOfElementsPerProcess(numProcesses, bytesNumber);
+    printArray(arrayBytesPerProcess, 0, numProcesses);
+    // printf("Each process will read %ld bytes\n", bytesPerProcess);
+    long remainingBytesToRead = arrayBytesPerProcess[0];
     int i = 0;
     long startOffset = 0;
     int process = 0;
+    int sendedBytes = 0;
+    long taskArrayIndex = 0;
+    long FileInfoToReadArrayIndex = 0;
     
-    FileToReadInfo fileToReadInfo;
-    while (i < numFiles && process < NUM_PROCESSES) {
+    while (thereAreFilesToSplit(i, numFiles, process) == 1) {
+        FileInfoToRead fileInfoToRead;
+        Task task;
         long startFromBytes;
         long endToBytes;
-        if ((filesInfos[i].fileSize - startOffset) < remainingBytesToRead) {
-            // CI VA TUTTO
-            startFromBytes = startOffset;
-            endToBytes = filesInfos[i].fileSize;
-            strcpy(fileToReadInfo.fileName, filesInfos[i].fileName);
-            fileToReadInfo.startFromBytes = startFromBytes;
-            fileToReadInfo.endToBytes = endToBytes - 1;
-            int inviati = endToBytes - startFromBytes;
-            remainingBytesToRead -= inviati;
+        startFromBytes = startOffset;
+        if (fileSizeIsEqualToRemainingBytesToRead(filesInfos[i], startOffset, remainingBytesToRead)) {
+            // NON SO SE CI VUOLE - START OFFSET
+            // printf("File info size: %d - Start offset: %d - Remaining bytes to read: %d\n", filesInfos[i].fileSize, startOffset, remainingBytesToRead);
+            endToBytes = startOffset + remainingBytesToRead;
+            setFileToReadInfo(&fileInfoToRead, filesInfos[i], startOffset, endToBytes);
+            sendedBytes = getSendedBytes(endToBytes, startFromBytes);
+            remainingBytesToRead -= sendedBytes;
             // SE IL FILE è TERMINATO
-            if (inviati == (filesInfos[i].fileSize - startOffset)) {
+            if (isFileEnded(sendedBytes, filesInfos[i], startOffset)) {
+                // printf("FILE FINITO 3 \n");
+                i++;
+                // remainingBytesToRead = arrayBytesPerProcess[process];
+            }
+            startOffset = 0;
+            printf("Processo %d -> {%s} - from %ld to %ld\n", process, fileInfoToRead.fileName, fileInfoToRead.startFromBytes, fileInfoToRead.endToBytes);
+            process++;
+            remainingBytesToRead = arrayBytesPerProcess[process];
+            // taskArraySize = addTask(taskArray, taskArraySize, fileInfoToRead, taskArrayIndex++);
+            // printf(">>> INVIATI %ld - %ld = %d\n", endToBytes, startFromBytes, sendedBytes);
+            // printf(">>> REMAINING BYTES TO READ = %ld - %d = %ld\n", remainingBytesToRead, sendedBytes, remainingBytesToRead - sendedBytes);
+        } else if (canProcessReadWholeFile(filesInfos[i], startOffset, remainingBytesToRead) == 1) {
+            // CI VA TUTTO
+            endToBytes = filesInfos[i].fileSize;
+            setFileToReadInfo(&fileInfoToRead, filesInfos[i], startOffset, endToBytes);
+            sendedBytes = getSendedBytes(endToBytes, startFromBytes);
+            // SE IL FILE è TERMINATO
+            printf("Processo %d -> {%s} - from %ld to %ld\n", process, fileInfoToRead.fileName, fileInfoToRead.startFromBytes, fileInfoToRead.endToBytes);
+            // printf(">>> INVIATI %ld - %ld = %d\n", endToBytes, startFromBytes, sendedBytes);
+            // printf(">>> REMAINING BYTES TO READ = %ld - %d = %ld\n", remainingBytesToRead, sendedBytes, remainingBytesToRead - sendedBytes);
+            remainingBytesToRead -= sendedBytes;
+            // printf(">>> REMAINING BYTES %ld\n\n", remainingBytesToRead);
+            if (isFileEnded(sendedBytes, filesInfos[i], startOffset)) {
                 // printf("FILE FINITO 1 \n");
                 i++;
                 startOffset = 0;
             }
-            printf("Processo %d -> {%s} - from %ld to %ld\n", process, fileToReadInfo.fileName, fileToReadInfo.startFromBytes, fileToReadInfo.endToBytes);
-            // printf(">>> INVIATI %ld - %ld = %d\n", endToBytes, startFromBytes, inviati);
             // printf("\n>>> REMAINING BYTES %ld - %ld = %ld\n", remainingBytesToRead, inviati, r§emainingBytesToRead - inviati);
-            // printf(">>> REMAINING BYTES %ld\n\n", remainingBytesToRead);
-        } else if (filesInfos[i].fileSize > remainingBytesToRead) {
-            // QUA RESTA IN LOOP
+        } else {
+            // NON SO SE CI VUOLE - START OFFSET
             // printf("FILE SIZE %d, REMAINING %ld\n", filesInfos[i].fileSize, remainingBytesToRead);
             // CI VA SOLO UNA PARTE
-            startFromBytes = startOffset;
             // printf("\n>>> END TO BYTES %ld + %ld = %ld\n", remainingBytesToRead, startOffset, remainingBytesToRead + startOffset);
-            endToBytes = remainingBytesToRead + startOffset;
-            strcpy(fileToReadInfo.fileName, filesInfos[i].fileName);
-            fileToReadInfo.startFromBytes = startFromBytes;
-            fileToReadInfo.endToBytes = endToBytes - 1;
+            endToBytes = startOffset + remainingBytesToRead;
+            setFileToReadInfo(&fileInfoToRead, filesInfos[i], startOffset, endToBytes);
             // startOffset = filesInfos[i].fileSize - remainingBytesToRead;
-            int inviati = endToBytes - startFromBytes;
-            remainingBytesToRead -= inviati;
-            // SE IL FILE è TERMINATO
-            // SE IL FILE è TERMINATO
-            if (inviati == (filesInfos[i].fileSize - startOffset)) {
-                // printf("FILE FINITO 2: %d - %d\n", inviati, filesInfos[i].fileSize - startOffset);
+            sendedBytes = getSendedBytes(endToBytes, startFromBytes);
+            // printf("\n>>> REMAINING BYTES TO READ = %ld - BYTES PER PROCESS = %ld - START OFFSET %ld\n", remainingBytesToRead, arrayBytesPerProcess[i], startOffset);
+            printf("Processo %d -> {%s} - from %ld to %ld\n", process, fileInfoToRead.fileName, fileInfoToRead.startFromBytes, fileInfoToRead.endToBytes);
+            // printf(">>> [2] INVIATI %ld - %ld = %d\n", endToBytes, startFromBytes, sendedBytes);
+            // printf(">>> [2] REMAINING BYTES %ld - %ld = %ld\n", remainingBytesToRead, sendedBytes, remainingBytesToRead - sendedBytes);
+            // printf(">>> [2] REMAINING BYTES TO READ = %ld - %d = %ld\n", remainingBytesToRead, sendedBytes, remainingBytesToRead - sendedBytes);
+            remainingBytesToRead -= sendedBytes;
+            // printf(">>> [2] REMAINING BYTES %ld\n\n", remainingBytesToRead);
+            if (isFileEnded(sendedBytes, filesInfos[i], startOffset)) {
+                // printf("FILE FINITO 2: %d - %ld\n", inviati, filesInfos[i].fileSize - startOffset);
                 i++;
                 startOffset = 0;
             } else {
                 startOffset = endToBytes;
             }
-            remainingBytesToRead = bytesPerProcess;
-            printf("Processo %d -> {%s} - from %ld to %ld\n", process, fileToReadInfo.fileName, fileToReadInfo.startFromBytes, fileToReadInfo.endToBytes);
-            // printf(">>> [2] INVIATI %ld - %ld = %d\n", endToBytes, startFromBytes, inviati);
-            // printf(">>> [2] REMAINING BYTES %ld - %ld = %ld\n", remainingBytesToRead, inviati, remainingBytesToRead - inviati);
-            // printf(">>> [2] REMAINING BYTES %ld\n\n", remainingBytesToRead);
             process++;
-        } else if (filesInfos[i].fileSize == remainingBytesToRead) {
-            startFromBytes = startOffset;
-            endToBytes = remainingBytesToRead;
-            strcpy(fileToReadInfo.fileName, filesInfos[i].fileName);
-            fileToReadInfo.startFromBytes = startOffset;
-            fileToReadInfo.endToBytes = endToBytes - 1;
-            int inviati = endToBytes - startFromBytes;
-            remainingBytesToRead -= inviati;
-            // SE IL FILE è TERMINATO
-            if (inviati == (filesInfos[i].fileSize - startOffset)) {
-                // printf("FILE FINITO 3 \n");
-                i++;
-            }
-            remainingBytesToRead = bytesPerProcess;
-            printf("Processo %d -> {%s} - from %ld to %ld\n", process, fileToReadInfo.fileName, fileToReadInfo.startFromBytes, fileToReadInfo.endToBytes);
+            remainingBytesToRead = arrayBytesPerProcess[process];
+            // taskArraySize = addTask(taskArray, taskArraySize, fileInfoToRead, taskArrayIndex++);
         }
         // printf("%d - %d\n", i < numFiles, process < NUM_PROCESSES);
+        // task.filesToRead[FileInfoToReadArrayIndex++] = fileInfoToRead;
     }
-    fileToReadInfo.startFromBytes = 0;
-    fileToReadInfo.endToBytes = 100;
+    // printTaskArray(taskArray, taskArraySize);
+    // task.startFromBytes = 0;
+    // task.endToBytes = 100;
     printf("SIZE: %d\n", filesInfos[i].fileSize);
 }
 
 int main(int argc, char **argv) {
     FileInfo *filesInfos = getFilesInfos();
     int totalBytes = getTotalBytesFromFiles(filesInfos, FILE_NUMBER);
+
 
     printf("Total bytes: %d\n", totalBytes);
 
