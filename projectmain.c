@@ -3,11 +3,11 @@
 #include <mpi.h>
 #include <string.h>
 #include <unistd.h>
-#define NUM_PROCESSES 3
+#define NUM_PROCESSES 300
 #define MAX_FILE_LIST_SIZE 100
 #define MAX_FILE_NAME_LENGTH 255
 #define FILE_NUMBER 3
-#define TASK_ARRAY_SIZE 2
+#define TASK_ARRAY_SIZE 200000
 #define MIN(a,b) (((a)<(b))?(a):(b))
 
 typedef struct {
@@ -19,17 +19,19 @@ typedef struct {
     char fileName[MAX_FILE_NAME_LENGTH];
     long startFromBytes;
     long endToBytes;
-} FileInfoToRead;
+    int size;
+} SubTask;
 
 typedef struct {
-    FileInfoToRead *filesToRead[MAX_FILE_LIST_SIZE];
+    SubTask *subTasks;
+    int size;
 } Task;
 
 int getFileSize(char *fileName) {
-    char file[MAX_FILE_NAME_LENGTH] = "";
-    strcat(file, fileName);
-    strcat(file, ".txt");
-    FILE *fp = fopen(file, "r");
+    char subTask[MAX_FILE_NAME_LENGTH] = "";
+    strcat(subTask, fileName);
+    strcat(subTask, ".txt");
+    FILE *fp = fopen(subTask, "r");
     fseek(fp, 0L, SEEK_END);
     return ftell(fp);
 }
@@ -88,11 +90,13 @@ int getTotalBytesFromFiles(FileInfo *fileInfo, int fileNumber) {
 long* getNumberOfElementsPerProcess(int process_number, int elements_number) {
     if (process_number > elements_number) {
         // Errore divisione
+        printf("THERE ARE TOO MANY PROCESSES\nPROCESSES: %d, TOTAL BYTES: %d\n", process_number, elements_number);
+        exit(0);
         process_number = elements_number;
     }
     long resto = elements_number % process_number;
     long elements_per_process = elements_number / process_number;
-    long *arrayOfElements = malloc(sizeof(int) * process_number);
+    long *arrayOfElements = malloc(sizeof(long) * process_number);
 
     int i;
     for (i = 0; i < process_number; i++) {
@@ -114,8 +118,28 @@ void printArray(long *values, int my_rank, int size) {
     char msg[50];
 
     for (i = 0; i < size; i++) {
-        sprintf(msg, "values[%d]: %ld\n", i, values[i]);
+        sprintf(msg, "########## values[%d]: %ld\n", i, values[i]);
         logMessage(msg, my_rank);
+    }
+}
+
+void printSubTaskArray(SubTask *values, int process, int size) {
+    int i;
+    char msg[1000];
+
+    for (i = 0; i < size; i++) {
+        sprintf(msg, "[>>>>>> process[%d]: %s, %ld, %ld\n", process, values[i].fileName, values[i].startFromBytes, values[i].endToBytes);
+        write(1, &msg, strlen(msg)+1);
+    }
+}
+
+void printTaskArray(Task *values, long arraySize) {
+    // printf("%d - %ld\n", values[0].size, arraySize);
+    int i;
+    char msg[1000];
+    for (int i = 0; i < arraySize; i++) {
+        // printf("%d\n", values[i].size);
+        printSubTaskArray(values[i].subTasks, i, values[i].size);
     }
 }
 
@@ -123,19 +147,19 @@ int thereAreFilesToSplit(int index, int numFiles, int processIndex) {
     return index < numFiles && processIndex < NUM_PROCESSES ? 1 : 0;
 }
 
-int getRemainingBytesToSend(FileInfo fileInfo, int startOffset) {
-    return fileInfo.fileSize - startOffset;
-}
-
 int fileSizeIsEqualToRemainingBytesToRead(FileInfo fileInfo, int startOffset, int remainingBytesToRead) {
     return fileInfo.fileSize - startOffset == remainingBytesToRead ? 1 : 0;
+}
+
+int getRemainingBytesToSend(FileInfo fileInfo, int startOffset) {
+    return fileInfo.fileSize - startOffset;
 }
 
 int canProcessReadWholeFile(FileInfo fileInfo, int startOffset, int remainingBytesToRead) {
     return getRemainingBytesToSend(fileInfo, startOffset) < remainingBytesToRead ? 1 : 0;
 }
 
-void setFileToReadInfo(FileInfoToRead *fileInfoToRead, FileInfo fileInfo, int startOffset, int endToBytes) {
+void setFileToReadInfo(SubTask *fileInfoToRead, FileInfo fileInfo, int startOffset, int endToBytes) {
     strcpy(fileInfoToRead -> fileName, fileInfo.fileName);
     fileInfoToRead -> startFromBytes = startOffset;
     fileInfoToRead -> endToBytes = endToBytes - 1;
@@ -149,35 +173,56 @@ int getSendedBytes(int endToBytes, int startFromBytes) {
     return endToBytes - startFromBytes;
 }
 
-long addTask(FileInfoToRead *taskArray, long taskArraySize, FileInfoToRead newTask, int taskArrayIndex) {
-    printf("Addo %s\n", newTask.fileName);
-    if (taskArraySize <= taskArrayIndex) {
-        taskArraySize += TASK_ARRAY_SIZE;
-        taskArray = realloc(taskArray, taskArraySize * sizeof(FileInfoToRead));
+long addSubTask(SubTask *subTaskArray, long subTaskArrayMaximumSize, SubTask newSubTask, int taskArrayIndex) {
+    // printf("Addo %s: %ld - %ld\n", newSubtask -> fileName, newSubtask -> startFromBytes, newSubtask -> endToBytes);
+    // printf("subTaskArrayMaximumSize: %ld, taskArrayIndex: %d\n", subTaskArrayMaximumSize, taskArrayIndex);
+    if (subTaskArrayMaximumSize <= taskArrayIndex) {
+        subTaskArrayMaximumSize += TASK_ARRAY_SIZE;
+        subTaskArray = realloc(subTaskArray, subTaskArrayMaximumSize * sizeof(SubTask));
+        // printf("REALLOC\n");
+        // printf("NOW IS subTaskArrayMaximumSize: %ld, taskArrayIndex: %d\n", subTaskArrayMaximumSize, taskArrayIndex);
     }
-    taskArray[taskArrayIndex] = newTask;
-    return taskArraySize;
+    SubTask f;
+    subTaskArray[taskArrayIndex] = newSubTask;
+    return subTaskArrayMaximumSize;
 }
 
-// void printFileInfoToReadArray(FileInfoToRead *fileInfoToRead, long fileInfoToReadArraySize) {
+Task* newTask() {
+    Task *task = malloc(1 * sizeof(Task));
+    task -> subTasks = malloc(MAX_FILE_LIST_SIZE * sizeof(SubTask));
+    task -> size = 0;
+    return task;
+}
+
+SubTask* newSubTask(char *fileName, int startFromBytes, int endToBytes) {
+    SubTask *subTask = malloc(1 * sizeof(SubTask));
+    strcpy(subTask -> fileName, fileName);
+    subTask -> startFromBytes = startFromBytes;
+    subTask -> endToBytes = endToBytes;
+    return subTask;
+}
+
+// void printFileInfoToReadArray(SubTask *fileInfoToRead, long fileInfoToReadArraySize) {
 //     int i = 0;
 //     for (i = 0; i < fileInfoToReadArraySize; i++) {
 //         printf("FILE NAME: %s\n", fileInfoToRead[i].fileName);
 //     }
 // }
 
-// void printTaskArray(Task* taskArray, long taskArraySize) {
+// void printTaskArray(Task* subTaskArray, long subTaskArrayMaximumSize) {
 //     int i = 0;
-//     for (i = 0; i < taskArraySize; i++) {
-//         printFileInfoToReadArray(taskArray[i].filesToRead, 1);
+//     for (i = 0; i < subTaskArrayMaximumSize; i++) {
+//         printFileInfoToReadArray(subTaskArray[i].subTasks, 1);
 //     }
 // }
 
 void divideFilesBetweenProcesses(FileInfo *filesInfos, int bytesNumber, int numProcesses, int numFiles) {
-    long taskArraySize = TASK_ARRAY_SIZE;
-    Task *taskArray = calloc(sizeof(FileInfoToRead), TASK_ARRAY_SIZE);
-    Task t;
-    // printTaskArray(taskArray, taskArraySize);
+    // long subTaskArrayMaximumSize = TASK_ARRAY_SIZE;
+    // long subTaskArrayCurrentSize = 0;
+    // SubTask *subTaskArray = calloc(TASK_ARRAY_SIZE, sizeof(SubTask));
+    Task *taskArray = calloc(TASK_ARRAY_SIZE, sizeof(Task));
+    long taskArrayCurrentSize = 0;
+    // printTaskArray(subTaskArray, subTaskArrayMaximumSize);
     long *arrayBytesPerProcess = getNumberOfElementsPerProcess(numProcesses, bytesNumber);
     printArray(arrayBytesPerProcess, 0, numProcesses);
     // printf("Each process will read %ld bytes\n", bytesPerProcess);
@@ -186,12 +231,12 @@ void divideFilesBetweenProcesses(FileInfo *filesInfos, int bytesNumber, int numP
     long startOffset = 0;
     int process = 0;
     int sendedBytes = 0;
-    long taskArrayIndex = 0;
     long FileInfoToReadArrayIndex = 0;
+    // Task *task = newTask();
+    Task *task = newTask();
     
     while (thereAreFilesToSplit(i, numFiles, process) == 1) {
-        FileInfoToRead fileInfoToRead;
-        Task task;
+        SubTask fileInfoToRead;
         long startFromBytes;
         long endToBytes;
         startFromBytes = startOffset;
@@ -203,16 +248,54 @@ void divideFilesBetweenProcesses(FileInfo *filesInfos, int bytesNumber, int numP
             sendedBytes = getSendedBytes(endToBytes, startFromBytes);
             remainingBytesToRead -= sendedBytes;
             // SE IL FILE è TERMINATO
+            // subTaskArrayMaximumSize = addSubTask(subTaskArray, subTaskArrayMaximumSize, fileInfoToRead, subTaskArrayCurrentSize++);
+            // printf("MMH [3] :%s\n", subTaskArray[subTaskArrayCurrentSize - 1].fileName);
+            
+            // SubTask subTask;
+            // strcpy(subtask -> fileName, fileInfoToRead.fileName);
+            // subtask -> startFromBytes = fileInfoToRead.startFromBytes;
+            // subtask -> endToBytes = subtask -> endToBytes;
+            // printf(">> TASK-SIZE: %d\n", task -> size);
+            task -> subTasks[task -> size++] = *newSubTask(fileInfoToRead.fileName, fileInfoToRead.startFromBytes, fileInfoToRead.endToBytes);
+            // printSubTaskArray(task -> subTasks, process, task -> size);
+            // printf("FILE MEM: %p\n", &subTask);
+            // int i;
+            // char msg[1000];
+            // for (i = 0; i < task -> size; i++) {
+            //     sprintf(msg, "[>>>>>> process[%d]: %s, %ld, %ld\n", process, task -> subTasks[i].fileName, task -> subTasks[i].startFromBytes, task -> subTasks[i].endToBytes);
+            //     write(1, &msg, strlen(msg)+1);
+            // }
+            // i++;
+            process++;
+
             if (isFileEnded(sendedBytes, filesInfos[i], startOffset)) {
+                // FORSE L'IF SI PUO' TOGLIERE
                 // printf("FILE FINITO 3 \n");
                 i++;
-                // remainingBytesToRead = arrayBytesPerProcess[process];
+                // subTaskArrayMaximumSize = TASK_ARRAY_SIZE;
+                // subTaskArrayCurrentSize = 0;
+                // Task task = newTask();
+                remainingBytesToRead = arrayBytesPerProcess[process];
             }
             startOffset = 0;
-            printf("Processo %d -> {%s} - from %ld to %ld\n", process, fileInfoToRead.fileName, fileInfoToRead.startFromBytes, fileInfoToRead.endToBytes);
-            process++;
-            remainingBytesToRead = arrayBytesPerProcess[process];
-            // taskArraySize = addTask(taskArray, taskArraySize, fileInfoToRead, taskArrayIndex++);
+            // printf("Processo [3] %d -> {%s} - from %ld to %ld\n", process, fileInfoToRead.fileName, fileInfoToRead.startFromBytes, fileInfoToRead.endToBytes);
+            // remainingBytesToRead = arrayBytesPerProcess[process];
+            // printf("[3] MO CANCELLO TUTTO\n");
+            // printSubTaskArray(task -> subTasks, process, task -> size);
+            // subTaskArrayCurrentSize = 0;
+            // subTaskArray = calloc(TASK_ARRAY_SIZE, sizeof(SubTask));
+            // subTaskArrayMaximumSize = TASK_ARRAY_SIZE;
+
+            // task -> subTasks[task -> size] = subTaskArray;
+            // task -> size++;
+            taskArray[taskArrayCurrentSize] = *task;
+            taskArrayCurrentSize++;
+            // task = newTask();
+            task -> subTasks = calloc(TASK_ARRAY_SIZE, sizeof(SubTask));
+            task -> size = 0;
+
+            // printf("NEW SIZE: %d\n", task -> size);
+            // subTaskArrayMaximumSize = addSubTask(subTaskArray, subTaskArrayMaximumSize, fileInfoToRead, taskArrayIndex++);
             // printf(">>> INVIATI %ld - %ld = %d\n", endToBytes, startFromBytes, sendedBytes);
             // printf(">>> REMAINING BYTES TO READ = %ld - %d = %ld\n", remainingBytesToRead, sendedBytes, remainingBytesToRead - sendedBytes);
         } else if (canProcessReadWholeFile(filesInfos[i], startOffset, remainingBytesToRead) == 1) {
@@ -221,16 +304,47 @@ void divideFilesBetweenProcesses(FileInfo *filesInfos, int bytesNumber, int numP
             setFileToReadInfo(&fileInfoToRead, filesInfos[i], startOffset, endToBytes);
             sendedBytes = getSendedBytes(endToBytes, startFromBytes);
             // SE IL FILE è TERMINATO
-            printf("Processo %d -> {%s} - from %ld to %ld\n", process, fileInfoToRead.fileName, fileInfoToRead.startFromBytes, fileInfoToRead.endToBytes);
+            // printf("Processo [1] %d -> {%s} - from %ld to %ld\n", process, fileInfoToRead.fileName, fileInfoToRead.startFromBytes, fileInfoToRead.endToBytes);
             // printf(">>> INVIATI %ld - %ld = %d\n", endToBytes, startFromBytes, sendedBytes);
             // printf(">>> REMAINING BYTES TO READ = %ld - %d = %ld\n", remainingBytesToRead, sendedBytes, remainingBytesToRead - sendedBytes);
             remainingBytesToRead -= sendedBytes;
             // printf(">>> REMAINING BYTES %ld\n\n", remainingBytesToRead);
+            // subTaskArrayMaximumSize = addSubTask(subTaskArray, subTaskArrayMaximumSize, fileInfoToRead, subTaskArrayCurrentSize++);
+            // printf("MMH [1] :%s\n", subTaskArray[subTaskArrayCurrentSize - 1].fileName);
+            // printf(">> TASK-SIZE: %d\n", task -> size);
+            task -> subTasks[task -> size++] = *newSubTask(fileInfoToRead.fileName, fileInfoToRead.startFromBytes, fileInfoToRead.endToBytes);
+
             if (isFileEnded(sendedBytes, filesInfos[i], startOffset)) {
-                // printf("FILE FINITO 1 \n");
+                // FORSE QUESTO SI PUO' TOGLIERE
+                // printf("FILE FINITO 1, CI VA TUTTO\n");
                 i++;
                 startOffset = 0;
+                // subTaskArrayCurrentSize = 0;
+                // subTaskArray = calloc(TASK_ARRAY_SIZE, sizeof(SubTask));
+                // subTaskArrayMaximumSize = TASK_ARRAY_SIZE;
+                // subTaskArrayMaximumSize = TASK_ARRAY_SIZE;
             }
+
+            if (remainingBytesToRead == 0) {
+                // printf("[1] MO CANCELLO TUTTO\n");
+                // printSubTaskArray(subTaskArray, process, subTaskArrayCurrentSize);
+                // printSubTaskArray(task -> subTasks, process, task -> size);
+                // int i;
+                // char msg[1000];
+                // for (i = 0; i < task -> size; i++) {
+                //     sprintf(msg, "[>>>>>> process[%d]: %s, %ld, %ld\n", process, task -> subTasks[i].fileName, task -> subTasks[i].startFromBytes, task -> subTasks[i].endToBytes);
+                //     write(1, &msg, strlen(msg)+1);
+                // }
+                // task -> subTasks[task -> size] = subTaskArray;
+                // task -> size++;
+                taskArray[taskArrayCurrentSize] = *task;
+                taskArrayCurrentSize++;
+                // task = newTask();
+                task -> subTasks = calloc(TASK_ARRAY_SIZE, sizeof(SubTask));
+                task -> size = 0;
+            }
+
+            // printf("NEW SIZE: %d\n", task -> size);
             // printf("\n>>> REMAINING BYTES %ld - %ld = %ld\n", remainingBytesToRead, inviati, r§emainingBytesToRead - inviati);
         } else {
             // NON SO SE CI VUOLE - START OFFSET
@@ -242,30 +356,66 @@ void divideFilesBetweenProcesses(FileInfo *filesInfos, int bytesNumber, int numP
             // startOffset = filesInfos[i].fileSize - remainingBytesToRead;
             sendedBytes = getSendedBytes(endToBytes, startFromBytes);
             // printf("\n>>> REMAINING BYTES TO READ = %ld - BYTES PER PROCESS = %ld - START OFFSET %ld\n", remainingBytesToRead, arrayBytesPerProcess[i], startOffset);
-            printf("Processo %d -> {%s} - from %ld to %ld\n", process, fileInfoToRead.fileName, fileInfoToRead.startFromBytes, fileInfoToRead.endToBytes);
+            // printf("Processo [2] %d -> {%s} - from %ld to %ld\n", process, fileInfoToRead.fileName, fileInfoToRead.startFromBytes, fileInfoToRead.endToBytes);
             // printf(">>> [2] INVIATI %ld - %ld = %d\n", endToBytes, startFromBytes, sendedBytes);
-            // printf(">>> [2] REMAINING BYTES %ld - %ld = %ld\n", remainingBytesToRead, sendedBytes, remainingBytesToRead - sendedBytes);
             // printf(">>> [2] REMAINING BYTES TO READ = %ld - %d = %ld\n", remainingBytesToRead, sendedBytes, remainingBytesToRead - sendedBytes);
             remainingBytesToRead -= sendedBytes;
             // printf(">>> [2] REMAINING BYTES %ld\n\n", remainingBytesToRead);
+            // printf("PRE-SIZEONA: %ld\n", subTaskArrayCurrentSize);
+            // printSubTaskArray(subTaskArray, subTaskArrayCurrentSize);
+            // subTaskArrayMaximumSize = addSubTask(subTaskArray, subTaskArrayMaximumSize, fileInfoToRead, subTaskArrayCurrentSize++);
+            // printf("POST-SIZEONA: %ld\n", subTaskArrayCurrentSize);
+            // printf("MMH [2] :%s\n", subTaskArray[0].fileName);
+            // printf("MMH [2] :%s\n", subTaskArray[1].fileName);
+            // printf("MMH [2] :%s\n", subTaskArray[2].fileName);
+            // printf(">> TASK-SIZE: %d\n", task -> size);
+            task -> subTasks[task -> size++] = *newSubTask(fileInfoToRead.fileName, fileInfoToRead.startFromBytes, fileInfoToRead.endToBytes);
+
             if (isFileEnded(sendedBytes, filesInfos[i], startOffset)) {
-                // printf("FILE FINITO 2: %d - %ld\n", inviati, filesInfos[i].fileSize - startOffset);
+                // printf("FILE FINITO 2: %d - %ld\n", sendedBytes, filesInfos[i].fileSize - startOffset);
                 i++;
                 startOffset = 0;
+                // subTaskArrayCurrentSize = 0;
+                // subTaskArray = calloc(TASK_ARRAY_SIZE, sizeof(SubTask));
+                // subTaskArrayMaximumSizse = TASK_ARRAY_SIZE;
+                // subTaskArrayMaximumSize = TASK_ARRAY_SIZE;
             } else {
                 startOffset = endToBytes;
             }
+
+            if (remainingBytesToRead == 0) {
+                // printf("[2] MO CANCELLO TUTTO\n");
+                // printSubTaskArray(subTaskArray, process, subTaskArrayCurrentSize);
+                // printSubTaskArray(task -> subTasks, process, task -> size);
+                // int i;
+                // char msg[1000];
+                // for (i = 0; i < task -> size; i++) {
+                //     sprintf(msg, "[>>>>>> process[%d]: %s, %ld, %ld\n", process, task -> subTasks[i].fileName, task -> subTasks[i].startFromBytes, task -> subTasks[i].endToBytes);
+                //     write(1, &msg, strlen(msg)+1);
+                // }
+                // task -> subTasks[task -> size] = subTaskArray;
+                // task -> size++;
+                taskArray[taskArrayCurrentSize] = *task;
+                taskArrayCurrentSize++;
+                // task = newTask();
+                task -> subTasks = calloc(TASK_ARRAY_SIZE, sizeof(SubTask));
+                task -> size = 0;
+            }
+
             process++;
             remainingBytesToRead = arrayBytesPerProcess[process];
-            // taskArraySize = addTask(taskArray, taskArraySize, fileInfoToRead, taskArrayIndex++);
+            // printf(">>> REMAINING BYTES TO READ arrayBytesPerProcess[%d] = %ld\n", process, remainingBytesToRead);
+            // subTaskArrayMaximumSize = addSubTask(subTaskArray, subTaskArrayMaximumSize, fileInfoToRead, taskArrayIndex++);
         }
         // printf("%d - %d\n", i < numFiles, process < NUM_PROCESSES);
-        // task.filesToRead[FileInfoToReadArrayIndex++] = fileInfoToRead;
+        // task -> subTasks[FileInfoToReadArrayIndex++] = fileInfoToRead;
     }
-    // printTaskArray(taskArray, taskArraySize);
-    // task.startFromBytes = 0;
-    // task.endToBytes = 100;
-    printf("SIZE: %d\n", filesInfos[i].fileSize);
+    // printTaskArray(subTaskArray, subTaskArrayMaximumSize);
+    // task -> startFromBytes = 0;
+    // task -> endToBytes = 100;
+    // printf("SIZE: %d\n", filesInfos[i].fileSize);
+
+    printTaskArray(taskArray, taskArrayCurrentSize);
 }
 
 int main(int argc, char **argv) {
@@ -273,9 +423,30 @@ int main(int argc, char **argv) {
     int totalBytes = getTotalBytesFromFiles(filesInfos, FILE_NUMBER);
 
 
-    printf("Total bytes: %d\n", totalBytes);
+    // printf("Total bytes: %d\n", totalBytes);
 
     divideFilesBetweenProcesses(filesInfos, totalBytes, NUM_PROCESSES, FILE_NUMBER);
+    //  char *fileNames[MAX_FILE_NAME_LENGTH] = {
+    //     "files/610_parole_HP",
+    //     "files/1000_parole_italiane",
+    //     "files/6000_parole_italiane",
+    //     "files/280000_parole_italiane",
+    //     "files/test",
+    //     "files/test2"
+    // };
+    
+    // SubTask *subTaskArray = calloc(sizeof(SubTask), TASK_ARRAY_SIZE);
+    // int i = 0, size = 0, totalSize = 0;
+    // for (i = 0; i < 6; i++) {
+    //     SubTask fileInfoToRead;
+    //     strcpy(fileInfoToRead.fileName, fileNames[i]);
+    //     fileInfoToRead.startFromBytes = 0;
+    //     fileInfoToRead.endToBytes = i;
+    //     totalSize = addSubTask(subTaskArray, totalSize, fileInfoToRead, size++);
+    // }
+    // printSubTaskArray(subTaskArray, size);
+
+
 
     return 0;
 }
