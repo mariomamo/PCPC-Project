@@ -1,0 +1,13 @@
+WORD,COUNT
+Orecchiali,15
+Trottolino,13
+Trottola,12
+Geppetto,11
+Pidocchio,10
+Gilberto,9
+PieroAngela,8
+GoogleMerda,7
+Antonio,6
+Guido,5
+Nicola,4
+Mario,1
