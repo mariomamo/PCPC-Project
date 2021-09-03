@@ -7,7 +7,7 @@
 #define MAX_FILE_LIST_SIZE 100
 #define MAX_FILE_NAME_LENGTH 255
 #define MAX_WORD_SIZE 1024
-#define FILE_NUMBER 1
+#define FILE_NUMBER 7
 #define TASK_ARRAY_SIZE 200000
 #define MAX_HEAP_SIZE 100000
 #define TASK_ARRAY_SIZE_2 2
@@ -91,14 +91,17 @@ int getFileSize(char *fileName) {
 
 FileInfo* getFilesInfos() {
     char *fileNames[MAX_FILE_NAME_LENGTH] = {
-        // "files/610_parole_HP.txt",
-        // "files/1000_parole_italiane.txt",
-        // "files/6000_parole_italiane.txt",
+        "files/610_parole_HP.txt",
+        "files/1000_parole_italiane.txt",
+        "files/6000_parole_italiane.txt",
         "files/280000_parole_italiane.txt",
-        // "files/test.txt"
+        "files/test.txt",
+        "files/altri/commedia.txt",
+        "files/altri/bible.txt",
     };
 
     // char *fileNames[MAX_FILE_NAME_LENGTH] = {
+    //     "files/minicommedia.txt",
     //     "files/test_count.txt",
     //     "files/test.txt",
     //     "files/test2.txt",
@@ -448,11 +451,69 @@ void byLevel(struct BTreeNode *t) {
 void toLowerString(char *str) {
     int i = 0;
     int length = strlen(str);
-    for (i = 0; i < length - 2; i++) {
+    for (i = 0; i < length; i++) {
         str[i] = tolower(str[i]);
     }
-    if (str[length - 1] == '\n')
-        str[length - 2] = 0;
+    str[length] = 0;
+}
+
+// struct BTreeNode* countWords(SubTask *subTask, int rank) {
+//     rank = rank - 1;
+//     struct BTreeNode *btree = newEmptyBTree();
+//     // printf("[%d] Ho ricevuto %s - %ld - %ld\n", rank, subTask -> fileName, subTask -> startFromBytes, subTask -> endToBytes);
+//     FILE *file = fopen(subTask -> fileName, "r");
+//     long start = subTask -> startFromBytes;
+//     int remainingBytesToRead = subTask -> endToBytes + 1 - subTask -> startFromBytes;
+//     int lineSize = 1000;
+//     int parole = 0;
+//     char line[lineSize];
+//     // printf("Processo %d, leggo %d\n", rank, remainingBytesToRead);
+//     if (start != 0) {
+//         fseek(file, start-1, SEEK_SET);
+//         char c = fgetc(file);
+//         if (c != EOF) {
+//             if (c != '\n') {
+//                 // printf("NO BUENO: %c\n", c);
+//                 // fgets(line, lineSize, file);
+//                 // printf("la parola è: %s", line);
+//                 while ((c = fgetc(file)) != '\n') {
+//                     remainingBytesToRead--;
+//                 }
+//                 remainingBytesToRead --;
+//                 // printf("Processo %d, in realtà devo leggere %d\n", rank, remainingBytesToRead);
+//             } else {
+//                 // printf("BUENO\n");
+//             }
+//         }
+//     }
+//     // int remainingBytesToRead = 100;
+//     int chread = 0;
+//     char *read;
+//     while (remainingBytesToRead > 0 && (read = fgets(line, lineSize, file))) {
+//         int readedBytes = strlen(line);
+//         // if (rank == 1)
+//         //     printf("REMAINING: %d - %d = %d\n", remainingBytesToRead, readedBytes, remainingBytesToRead - readedBytes);
+//         remainingBytesToRead -= readedBytes;
+//         parole++;
+//         // printf("LINE: %s", line);
+//         // printf("PRIMA: %s", line);
+//         toLowerString(line);
+//         // printf("[%d] DOPO: %s\n", rank, line);
+//         addToBTree(btree, line);
+//         chread += readedBytes;
+//     }
+//     // printf("[%d] last word: %s\n", rank, line);
+//     fclose(file);
+//     // printf("\n[%d] Ho letto %d bytes\nParole: %d\n", rank, chread, parole);
+//     return btree;
+// }
+
+/*
+* A-Z = 65 - 90
+* a-z = 97 - 122
+*/
+int isCharacter(char ch) {
+    return ch >= 65 && ch <= 90 || ch >= 97 && ch <= 122;
 }
 
 struct BTreeNode* countWords(SubTask *subTask, int rank) {
@@ -461,14 +522,16 @@ struct BTreeNode* countWords(SubTask *subTask, int rank) {
     // printf("[%d] Ho ricevuto %s - %ld - %ld\n", rank, subTask -> fileName, subTask -> startFromBytes, subTask -> endToBytes);
     FILE *file = fopen(subTask -> fileName, "r");
     long start = subTask -> startFromBytes;
+    // long start = 50;
     int remainingBytesToRead = subTask -> endToBytes + 1 - subTask -> startFromBytes;
+    // int remainingBytesToRead = 50;
     int lineSize = 1000;
     int parole = 0;
-    char line[lineSize];
+    char c;
     // printf("Processo %d, leggo %d\n", rank, remainingBytesToRead);
     if (start != 0) {
         fseek(file, start-1, SEEK_SET);
-        char c = fgetc(file);
+        c = fgetc(file);
         if (c != EOF) {
             if (c != '\n') {
                 // printf("NO BUENO: %c\n", c);
@@ -477,7 +540,7 @@ struct BTreeNode* countWords(SubTask *subTask, int rank) {
                 while ((c = fgetc(file)) != '\n') {
                     remainingBytesToRead--;
                 }
-                remainingBytesToRead --;
+                remainingBytesToRead--;
                 // printf("Processo %d, in realtà devo leggere %d\n", rank, remainingBytesToRead);
             } else {
                 // printf("BUENO\n");
@@ -486,19 +549,37 @@ struct BTreeNode* countWords(SubTask *subTask, int rank) {
     }
     // int remainingBytesToRead = 100;
     int chread = 0;
-    char *read;
-    while (remainingBytesToRead > 0 && (read = fgets(line, lineSize, file))) {
-        int readedBytes = strlen(line);
-        // if (rank == 1)
-        //     printf("REMAINING: %d - %d = %d\n", remainingBytesToRead, readedBytes, remainingBytesToRead - readedBytes);
+    int readedBytes;
+    char line[lineSize];
+    while (remainingBytesToRead > 0) {
+        readedBytes = 0;
+        while ((c = fgetc(file)) != EOF && (c == ' ' || c == '\r' || c == '\n' || !isCharacter(c))) {
+            remainingBytesToRead--;
+            // printf("Scarto questo: %c: remaining: %d\n", c, remainingBytesToRead);
+            chread++;
+        }
+        if (remainingBytesToRead == 0) break;
+        while (c != EOF && c != ' ' && c != '\r' && c != '\n' && isCharacter(c)) {
+            line[readedBytes++] = c;
+            c = fgetc(file);
+        }
+        line[readedBytes] = 0;
+        if (c != EOF) readedBytes++;
         remainingBytesToRead -= readedBytes;
         parole++;
-        // printf("LINE: %s", line);
-        // printf("PRIMA: %s", line);
+        chread += readedBytes;
+        // printf("[%d] Readed: %d, Remaining: %d\n", rank, readedBytes, remainingBytesToRead);
+
         toLowerString(line);
         // printf("[%d] DOPO: %s\n", rank, line);
         addToBTree(btree, line);
-        chread += readedBytes;
+
+        // printf("\n[%d] Ho letto %d bytes\nParole: %d\n", rank, chread, parole);
+        // if (c == EOF) {
+        //     chread--;
+        //     break;
+        // }
+        // printf("\n[%d] Ho letto %d bytes\n", rank, readedBytes);
     }
     // printf("[%d] last word: %s\n", rank, line);
     fclose(file);
@@ -574,7 +655,7 @@ void printList(struct ListNode *list) {
 
 void printHeap(Item *heap, long size) {
     int i = 0;
-    for (i = 0; i < size; i++) {
+    for (i = 0; i <= size; i++) {
         printf("%s: %ld\n", heap[i].word, heap[i].occurrences);
         // printf("SIZE: %d\n", i);
     }
@@ -651,11 +732,11 @@ Item* getMaximumFromHeap(Item *heap, long size) {
     strcpy(max -> word, heap[0].word);
     max -> occurrences = heap[0].occurrences;
 
-    strcpy(heap[0].word, heap[size - 1].word);
-    heap[0].occurrences = heap[size - 1].occurrences;
+    strcpy(heap[0].word, heap[size].word);
+    heap[0].occurrences = heap[size].occurrences;
 
-    strcpy(heap[size - 1].word, "");
-    heap[size - 1].occurrences = -1;
+    strcpy(heap[size].word, "");
+    heap[size].occurrences = -1;
 
     // free(heap[size]);
     // heap[size].word = NULL;
@@ -667,7 +748,7 @@ Item* getMaximumFromHeap(Item *heap, long size) {
     // printf("%s - %ld\n", maxChild -> word, maxChild -> occurrences);
 
     int pos = 0;
-    while (pos <= size - 1) {
+    while (pos <= size) {
         leftChildIndex = (2 * pos) + 1;
         rightChildIndex = (2 * pos) + 2;
         int maxChildIndex = -1;
@@ -699,7 +780,7 @@ void createCSV(Item *heap, long size, int rank) {
     fprintf(output, "WORD,COUNT\n");
 
     int s = size;
-    while (s > 0) {
+    while (s >= 0) {
         maximum = getMaximumFromHeap(heap, size);
         fprintf(output, "%s,%ld\n", maximum -> word, maximum -> occurrences);
         s--;
@@ -748,7 +829,7 @@ int main(int argc, char **argv) {
         printArray(arrayBytesPerProcess, 0, num_processes);
         divideFilesBetweenProcesses(taskArray, taskArrayCurrentSize, arrayBytesPerProcess, filesInfos, FILE_NUMBER);
         // printf("%d\n", *taskArrayCurrentSize);
-        // printTaskArray(taskArray, *taskArrayCurrentSize);
+        printTaskArray(taskArray, *taskArrayCurrentSize);
 
         scatterTasks(taskArray, *taskArrayCurrentSize, subTaskType);
         
@@ -760,13 +841,24 @@ int main(int argc, char **argv) {
         for (currentTask = 0; currentTask < numerOfTasks; currentTask++) {
             MPI_Recv(&subTask, 1, subTaskType, MASTER_PROCESS_ID, TAG, MPI_COMM_WORLD, &status);
             // printf("Processo [%d] ho ricevuto %s - % ld - %ld\n", rank, subTask.fileName, subTask.startFromBytes, subTask.endToBytes);
+            printf("[%d] Counting words...\n", rank);
+            double startTime = MPI_Wtime();
             struct BTreeNode *btree = countWords(&subTask, rank);
+            printf("[%d] Word counted!\n", rank);
             // byLevel(btree);
             // printf("\n\n");
+            printf("[%d] Ordering words...\n", rank);
             Item *heap = calloc(MAX_HEAP_SIZE, sizeof(Item));
             int size = createOrderedArrayFromBtree(heap, btree);
+            printf("[%d] Words ordered!\n", rank);
+            printf("[%d] Creating CSV...\n", rank);
             // printHeap(heap, size);
             createCSV(heap, size, rank);
+            double endTime = MPI_Wtime();
+            printf("[%d] CSV created!\n", rank);
+            double totalTime = endTime - startTime;
+            printf("[%d] Execution time: %f\n", rank, totalTime);
+
 
             // testHeap();
 
