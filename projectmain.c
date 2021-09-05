@@ -7,9 +7,9 @@
 #define MAX_FILE_LIST_SIZE 100
 #define MAX_FILE_NAME_LENGTH 255
 #define MAX_WORD_SIZE 1024
-#define FILE_NUMBER 7
-#define TASK_ARRAY_SIZE 200000
-#define MAX_HEAP_SIZE 100000
+#define FILE_NUMBER 1
+#define TASK_ARRAY_SIZE 4000
+#define MAX_HEAP_SIZE 4000
 #define TASK_ARRAY_SIZE_2 2
 #define MASTER_PROCESS_ID 0
 #define TAG 100
@@ -41,6 +41,7 @@ typedef struct {
 struct BTreeNode {
     char word[MAX_WORD_SIZE];
     long occurrences;
+    int height;
     struct BTreeNode *left;
     struct BTreeNode *right;
 };
@@ -58,6 +59,7 @@ struct BTreeNode* newBTree(struct BTreeNode *bt1, struct BTreeNode *bt2, char *w
     node -> right = bt2;
     strcpy(node -> word, word);
     node -> occurrences = occurrences;
+    node -> height = 1;
     return node;
 }
 
@@ -72,6 +74,13 @@ struct BTreeNode* newEmptyBTree() {
 
 Item* newItem() {
     Item *item = calloc(1, sizeof(Item));
+    return item;
+}
+
+Item* newItemWithValues(char *word, int occurrences) {
+    Item *item = calloc(1, sizeof(Item));
+    strcpy(item -> word, word);
+    item -> occurrences = occurrences;
     return item;
 }
 
@@ -92,16 +101,18 @@ int getFileSize(char *fileName) {
 FileInfo* getFilesInfos() {
     char *fileNames[MAX_FILE_NAME_LENGTH] = {
         "files/610_parole_HP.txt",
-        "files/1000_parole_italiane.txt",
-        "files/6000_parole_italiane.txt",
-        "files/280000_parole_italiane.txt",
-        "files/test.txt",
-        "files/altri/commedia.txt",
-        "files/altri/bible.txt",
+    //     "files/1000_parole_italiane.txt",
+    //     "files/6000_parole_italiane.txt",
+        // "files/280000_parole_italiane.txt",
+    //     "files/test.txt",
+    //     "files/altri/commedia.txt",
+        // "files/altri/bible.txt",
+    //     "files/altri/03-The_Return_Of_The_King.txt",
+    //     "files/altri/02-The_Two_Towers.txt",
     };
 
     // char *fileNames[MAX_FILE_NAME_LENGTH] = {
-    //     "files/minicommedia.txt",
+        // // "files/minicommedia.txt",
     //     "files/test_count.txt",
     //     "files/test.txt",
     //     "files/test2.txt",
@@ -329,11 +340,9 @@ Task *divideFilesBetweenProcesses(Task *taskArray, long *taskArrayCurrentSize, l
 
 void createSubTaskMPIStruct(MPI_Datatype *subTaskType) {
     int subTaskBlockCounts[3];
-    int taskBlockCounts[2];
-    MPI_Aint lb, mpi_long_extent, mpi_char_extent, sub_task_extent;
-    MPI_Aint subTaskOffsets[3], taskOffsets[2];
+    MPI_Aint lb, mpi_long_extent, mpi_char_extent;
+    MPI_Aint subTaskOffsets[3];
     MPI_Datatype subTaskArrayTypes[3];
-    MPI_Datatype taskArrayTypes[2];
 
     MPI_Type_get_extent(MPI_LONG, &lb, &mpi_long_extent);
     MPI_Type_get_extent(MPI_CHAR, &lb, &mpi_char_extent);
@@ -352,6 +361,37 @@ void createSubTaskMPIStruct(MPI_Datatype *subTaskType) {
 
     MPI_Type_create_struct(3, subTaskBlockCounts, subTaskOffsets, subTaskArrayTypes, subTaskType);
     MPI_Type_commit(subTaskType);
+}
+
+// typedef struct {
+//     char fileName[MAX_FILE_NAME_LENGTH];
+//     long startFromBytes;
+//     long endToBytes;
+// } SubTask;
+
+// typedef struct {
+//     char word[MAX_WORD_SIZE];
+//     long occurrences;
+// } Item;
+
+void createItemMPIStruct(MPI_Datatype *itemType) {
+    int itemBlockCounts[2];
+    MPI_Aint lb, mpi_char_extent;
+    MPI_Aint itemOffsets[2];
+    MPI_Datatype itemsArrayTypes[2];
+
+    MPI_Type_get_extent(MPI_CHAR, &lb, &mpi_char_extent);
+
+    itemOffsets[0] = 0;
+    itemsArrayTypes[0] = MPI_CHAR;
+    itemBlockCounts[0] = MAX_WORD_SIZE;
+
+    itemOffsets[1] = MAX_WORD_SIZE + mpi_char_extent;
+    itemsArrayTypes[1] = MPI_LONG;
+    itemBlockCounts[1] = 1;
+
+    MPI_Type_create_struct(2, itemBlockCounts, itemOffsets, itemsArrayTypes, itemType);
+    MPI_Type_commit(itemType);
 }
 
 void scatterTasks(Task *taskArray, int taskArrayCurrentSize, MPI_Datatype subTaskType) {
@@ -419,6 +459,123 @@ void addToBTree(struct BTreeNode *btree, char *word) {
             // VADO NEL SOTTOALBERO DI DESTRA
         }
     }
+}
+
+int getTreeHeight(struct BTreeNode *node) {
+    if (node == NULL) return 0;
+    return node -> height;
+}
+
+int getBalance(struct BTreeNode *node) {
+    if (node == NULL) return 0;
+    return getTreeHeight(node -> left) - getTreeHeight(node -> right);
+}
+
+struct BTreeNode* rightRotate(struct BTreeNode *node) {
+    struct BTreeNode *leftChild = node -> left;
+    struct BTreeNode *rightChildOfLeftChild = leftChild -> right;
+ 
+    // Perform rotation
+    leftChild -> right = node;
+    node -> left = rightChildOfLeftChild;
+ 
+    // Update heights
+    node -> height = MAX(getTreeHeight(node -> left), getTreeHeight(node -> right)) + 1;
+    leftChild -> height = MAX(getTreeHeight(leftChild -> left), getTreeHeight(leftChild -> right)) + 1;
+
+    // Return new root
+    return leftChild;
+}
+
+struct BTreeNode* leftRotate(struct BTreeNode *node) {
+    struct BTreeNode *rightChild = node -> right;
+    struct BTreeNode *leftChildOfRightChild = rightChild -> left;
+ 
+    // Perform rotation
+    rightChild -> left = node;
+    node -> right = leftChildOfRightChild;
+ 
+    //  Update heights
+    node -> height = MAX(getTreeHeight(node -> left), getTreeHeight(node -> right)) + 1;
+    rightChild -> height = MAX(getTreeHeight(rightChild -> left), getTreeHeight(rightChild -> right)) + 1;
+
+    // Return new root
+    return rightChild;
+}
+ 
+
+struct BTreeNode* addToAVL(struct BTreeNode *btree, char *word) {
+    if (btree == NULL || strcmp(btree -> word, "") == 0) {
+        return(newBTree(NULL, NULL, word, 1));
+    }
+ 
+    int compare = strcmp(word, btree -> word);
+    // printf("%s and %s = %d\n", word, btree -> word, compare);
+    if (compare < 0)
+        btree -> left  = addToAVL(btree -> left, word);
+    else if (compare > 0)
+        btree -> right = addToAVL(btree -> right, word);
+    else {
+        btree -> occurrences++;
+        return btree;
+    }
+
+    // printf("%d\n", getTreeHeight(btree -> left));
+    btree -> height = MAX(getTreeHeight(btree -> left), getTreeHeight(btree -> right)) + 1;
+
+    int balance = getBalance(btree);
+    
+    // printf("Balanced: %d\n", balance);
+
+    int leftCompare = btree -> left != NULL ? strcmp(word, btree -> left -> word) : 0;
+    int rightCompare = btree -> right != NULL ? strcmp(word, btree -> right -> word) : 0;
+
+    // Left Left Case
+    if (balance > 1 && leftCompare < 0)
+        return rightRotate(btree);
+ 
+    // Right Right Case
+    if (balance < -1 && rightCompare > 0)
+        return leftRotate(btree);
+ 
+    // Left Right Case
+    if (balance > 1 && leftCompare > 0) {
+        btree -> left =  leftRotate(btree -> left);
+        return rightRotate(btree);
+    }
+
+    // Right Left Case
+    if (balance < -1 && rightCompare < 0) {
+        btree -> right = rightRotate(btree -> right);
+        return leftRotate(btree);
+    }
+
+    return btree;
+}
+
+void preOrder(struct BTreeNode *rootNode) {
+    if(rootNode != NULL) {
+        printf("%s: %ld\n", rootNode -> word, rootNode -> occurrences);
+        preOrder(rootNode -> left);
+        preOrder(rootNode -> right);
+    }
+}
+
+void inOrder(struct BTreeNode *rootNode){
+    if (rootNode != NULL) {
+        inOrder(rootNode -> left);
+        printf("%s: %ld\n", rootNode -> word, rootNode -> occurrences);
+        inOrder(rootNode -> right);
+    }
+}
+
+long createArrayFromAVL(Item *wordsList, struct BTreeNode *rootNode, long index) {
+    if (rootNode != NULL) {
+        index = createArrayFromAVL(wordsList, rootNode -> left, index);
+        wordsList[index++] = *newItemWithValues(rootNode -> word, rootNode -> occurrences);
+        return createArrayFromAVL(wordsList, rootNode -> right, index);
+    }
+    return index;
 }
 
 void byLevel(struct BTreeNode *t) {
@@ -511,14 +668,20 @@ void toLowerString(char *str) {
 /*
 * A-Z = 65 - 90
 * a-z = 97 - 122
+* Accented letters = '-65' - '-128'
+* 192 -> 255 (215 and 247 excluded)
 */
 int isCharacter(char ch) {
+    // -105 = ×
+    // -73 = ÷
+    // printf("%d\n", 'è');
     return ch >= 65 && ch <= 90 || ch >= 97 && ch <= 122;
 }
 
 struct BTreeNode* countWords(SubTask *subTask, int rank) {
     rank = rank - 1;
-    struct BTreeNode *btree = newEmptyBTree();
+    // struct BTreeNode *btree = newEmptyBTree();
+    struct BTreeNode *btree = NULL;
     // printf("[%d] Ho ricevuto %s - %ld - %ld\n", rank, subTask -> fileName, subTask -> startFromBytes, subTask -> endToBytes);
     FILE *file = fopen(subTask -> fileName, "r");
     long start = subTask -> startFromBytes;
@@ -528,41 +691,46 @@ struct BTreeNode* countWords(SubTask *subTask, int rank) {
     int lineSize = 1000;
     int parole = 0;
     char c;
+    int chread = 0;
     // printf("Processo %d, leggo %d\n", rank, remainingBytesToRead);
     if (start != 0) {
         fseek(file, start-1, SEEK_SET);
         c = fgetc(file);
-        if (c != EOF) {
-            if (c != '\n') {
-                // printf("NO BUENO: %c\n", c);
-                // fgets(line, lineSize, file);
-                // printf("la parola è: %s", line);
-                while ((c = fgetc(file)) != '\n') {
-                    remainingBytesToRead--;
-                }
+        // printf("Pred char: %c\n", c);
+        if (c != EOF && c != '\n' && c != ' ') {
+            // printf("NO BUENO: %c\n", c);
+            // fgets(line, lineSize, file);
+            // printf("la parola è: %s", line);
+            while (remainingBytesToRead > 0 && (c = fgetc(file)) != EOF && c != '\n' && c != ' ') {
+                // printf("CHAR: %c\n", c);
                 remainingBytesToRead--;
-                // printf("Processo %d, in realtà devo leggere %d\n", rank, remainingBytesToRead);
-            } else {
-                // printf("BUENO\n");
+                chread++;
             }
+            remainingBytesToRead--;
+            // printf("Processo %d, in realtà devo leggere %d\n", rank, remainingBytesToRead);
+        } else {
+            // printf("BUENO\n");
         }
     }
     // int remainingBytesToRead = 100;
-    int chread = 0;
     int readedBytes;
     char line[lineSize];
     while (remainingBytesToRead > 0) {
         readedBytes = 0;
-        while ((c = fgetc(file)) != EOF && (c == ' ' || c == '\r' || c == '\n' || !isCharacter(c))) {
+        while (remainingBytesToRead > 0 && (c = fgetc(file)) != EOF && (c == ' ' || c == '\r' || c == '\n' || !isCharacter(c))) {
             remainingBytesToRead--;
+            // printf("Remaining: %d\n", remainingBytesToRead);
             // printf("Scarto questo: %c: remaining: %d\n", c, remainingBytesToRead);
             chread++;
         }
-        if (remainingBytesToRead == 0) break;
+        if (remainingBytesToRead <= 0) break;
         while (c != EOF && c != ' ' && c != '\r' && c != '\n' && isCharacter(c)) {
+            // printf("[%d] Reading %c\n", rank, c);
             line[readedBytes++] = c;
             c = fgetc(file);
+            // printf("PROX: %d\n", c);
         }
+        // printf("[%d] Readed %c\n", rank, 'è');
         line[readedBytes] = 0;
         if (c != EOF) readedBytes++;
         remainingBytesToRead -= readedBytes;
@@ -572,7 +740,8 @@ struct BTreeNode* countWords(SubTask *subTask, int rank) {
 
         toLowerString(line);
         // printf("[%d] DOPO: %s\n", rank, line);
-        addToBTree(btree, line);
+        // addToBTree(btree, line);
+        btree = addToAVL(btree, line);
 
         // printf("\n[%d] Ho letto %d bytes\nParole: %d\n", rank, chread, parole);
         // if (c == EOF) {
@@ -583,7 +752,7 @@ struct BTreeNode* countWords(SubTask *subTask, int rank) {
     }
     // printf("[%d] last word: %s\n", rank, line);
     fclose(file);
-    // printf("\n[%d] Ho letto %d bytes\nParole: %d\n", rank, chread, parole);
+    // printf("[%d] Ho letto %d bytes\nParole: %d\n", rank, chread, parole);
     return btree;
 }
 
@@ -688,7 +857,7 @@ void maxHeapify(Item *heap, long currPos) {
 
 int createOrderedArrayFromBtree(Item *heap, struct BTreeNode *btree) {
     // Item *heap = calloc(MAX_HEAP_SIZE, sizeof(Item));
-
+    if ((strcmp(btree -> word, "")) == 0 && btree -> occurrences == 0 && btree -> left == NULL && btree -> right == NULL) return -1;
     int maxNodes = MAX_HEAP_SIZE;
     struct BTreeNode *nodesToScan[maxNodes];
     int actualIndex = 0;
@@ -703,7 +872,7 @@ int createOrderedArrayFromBtree(Item *heap, struct BTreeNode *btree) {
         strcpy(item -> word, currentNode -> word);
         item -> occurrences = currentNode -> occurrences;
         heap[actualIndex] = *item;
-        // printf(">> %s: %ld\n", heap[actualIndex].word, heap[actualIndex].occurrences);
+        // printf(">> [%d] %s: %ld\n", actualIndex, heap[actualIndex].word, heap[actualIndex].occurrences);
         maxHeapify(heap, actualIndex);
 
         if (currentNode -> left != NULL) {
@@ -771,22 +940,39 @@ Item* getMaximumFromHeap(Item *heap, long size) {
     return max;
 }
 
-void createCSV(Item *heap, long size, int rank) {
-    Item *maximum;
+// void createCSV(Item *heap, long size, int rank) {
+//     if (size < 0) return;
+//     Item *maximum;
+//     char fileName[MAX_FILE_NAME_LENGTH];
+//     sprintf(fileName, "files/output_%d.txt", rank);
+
+//     FILE *output = fopen(fileName, "w");
+//     fprintf(output, "WORD,COUNT\n");
+
+//     int s = size;
+//     while (s >= 0) {
+//         maximum = getMaximumFromHeap(heap, size);
+//         fprintf(output, "%s,%ld\n", maximum -> word, maximum -> occurrences);
+//         s--;
+//     }
+
+// 	fclose(output);
+// }
+
+void createCSV(Item *wordsList, long size, int rank) {
+    if (size < 0) return;
+
     char fileName[MAX_FILE_NAME_LENGTH];
     sprintf(fileName, "files/output_%d.txt", rank);
-
     FILE *output = fopen(fileName, "w");
     fprintf(output, "WORD,COUNT\n");
 
-    int s = size;
-    while (s >= 0) {
-        maximum = getMaximumFromHeap(heap, size);
-        fprintf(output, "%s,%ld\n", maximum -> word, maximum -> occurrences);
-        s--;
+    int i;
+    for (i = 0; i < size; i++) {
+        fprintf(output, "%s,%ld\n", wordsList[i].word, wordsList[i].occurrences);
     }
 
-	fclose(output);
+    fclose(output);
 }
 
 void testHeap() {
@@ -804,21 +990,224 @@ void testHeap() {
     createCSV(heap, 12, 0);
 }
 
+void testAVL() {
+    struct BTreeNode *root = NULL;
+
+    char *words[MAX_FILE_LIST_SIZE] = {"10", "20", "30", "40", "50", "25"};
+
+    root = addToAVL(root, words[0]);
+    root = addToAVL(root, words[0]);
+    root = addToAVL(root, words[0]);
+    root = addToAVL(root, words[0]);
+    root = addToAVL(root, words[0]);
+    root = addToAVL(root, words[0]);
+    root = addToAVL(root, words[0]);
+    root = addToAVL(root, words[0]);
+    root = addToAVL(root, words[0]);
+    root = addToAVL(root, words[0]);
+
+    root = addToAVL(root, words[1]);
+    root = addToAVL(root, words[1]);
+    root = addToAVL(root, words[1]);
+    root = addToAVL(root, words[1]);
+    root = addToAVL(root, words[1]);
+    root = addToAVL(root, words[1]);
+    root = addToAVL(root, words[1]);
+    root = addToAVL(root, words[1]);
+    root = addToAVL(root, words[1]);
+    root = addToAVL(root, words[1]);
+    root = addToAVL(root, words[1]);
+    root = addToAVL(root, words[1]);
+    root = addToAVL(root, words[1]);
+    root = addToAVL(root, words[1]);
+    root = addToAVL(root, words[1]);
+    root = addToAVL(root, words[1]);
+    root = addToAVL(root, words[1]);
+    root = addToAVL(root, words[1]);
+    root = addToAVL(root, words[1]);
+    root = addToAVL(root, words[1]);
+
+    root = addToAVL(root, words[2]);
+    root = addToAVL(root, words[2]);
+    root = addToAVL(root, words[2]);
+    root = addToAVL(root, words[2]);
+    root = addToAVL(root, words[2]);
+    root = addToAVL(root, words[2]);
+    root = addToAVL(root, words[2]);
+    root = addToAVL(root, words[2]);
+    root = addToAVL(root, words[2]);
+    root = addToAVL(root, words[2]);
+    root = addToAVL(root, words[2]);
+    root = addToAVL(root, words[2]);
+    root = addToAVL(root, words[2]);
+    root = addToAVL(root, words[2]);
+    root = addToAVL(root, words[2]);
+    root = addToAVL(root, words[2]);
+    root = addToAVL(root, words[2]);
+    root = addToAVL(root, words[2]);
+    root = addToAVL(root, words[2]);
+    root = addToAVL(root, words[2]);
+    root = addToAVL(root, words[2]);
+    root = addToAVL(root, words[2]);
+    root = addToAVL(root, words[2]);
+    root = addToAVL(root, words[2]);
+    root = addToAVL(root, words[2]);
+    root = addToAVL(root, words[2]);
+    root = addToAVL(root, words[2]);
+    root = addToAVL(root, words[2]);
+    root = addToAVL(root, words[2]);
+    root = addToAVL(root, words[2]);
+
+    root = addToAVL(root, words[3]);
+    root = addToAVL(root, words[3]);
+    root = addToAVL(root, words[3]);
+    root = addToAVL(root, words[3]);
+    root = addToAVL(root, words[3]);
+    root = addToAVL(root, words[3]);
+    root = addToAVL(root, words[3]);
+    root = addToAVL(root, words[3]);
+    root = addToAVL(root, words[3]);
+    root = addToAVL(root, words[3]);
+    root = addToAVL(root, words[3]);
+    root = addToAVL(root, words[3]);
+    root = addToAVL(root, words[3]);
+    root = addToAVL(root, words[3]);
+    root = addToAVL(root, words[3]);
+    root = addToAVL(root, words[3]);
+    root = addToAVL(root, words[3]);
+    root = addToAVL(root, words[3]);
+    root = addToAVL(root, words[3]);
+    root = addToAVL(root, words[3]);
+    root = addToAVL(root, words[3]);
+    root = addToAVL(root, words[3]);
+    root = addToAVL(root, words[3]);
+    root = addToAVL(root, words[3]);
+    root = addToAVL(root, words[3]);
+    root = addToAVL(root, words[3]);
+    root = addToAVL(root, words[3]);
+    root = addToAVL(root, words[3]);
+    root = addToAVL(root, words[3]);
+    root = addToAVL(root, words[3]);
+    root = addToAVL(root, words[3]);
+    root = addToAVL(root, words[3]);
+    root = addToAVL(root, words[3]);
+    root = addToAVL(root, words[3]);
+    root = addToAVL(root, words[3]);
+    root = addToAVL(root, words[3]);
+    root = addToAVL(root, words[3]);
+    root = addToAVL(root, words[3]);
+    root = addToAVL(root, words[3]);
+    root = addToAVL(root, words[3]);
+
+    root = addToAVL(root, words[4]);
+    root = addToAVL(root, words[4]);
+    root = addToAVL(root, words[4]);
+    root = addToAVL(root, words[4]);
+    root = addToAVL(root, words[4]);
+    root = addToAVL(root, words[4]);
+    root = addToAVL(root, words[4]);
+    root = addToAVL(root, words[4]);
+    root = addToAVL(root, words[4]);
+    root = addToAVL(root, words[4]);
+    root = addToAVL(root, words[4]);
+    root = addToAVL(root, words[4]);
+    root = addToAVL(root, words[4]);
+    root = addToAVL(root, words[4]);
+    root = addToAVL(root, words[4]);
+    root = addToAVL(root, words[4]);
+    root = addToAVL(root, words[4]);
+    root = addToAVL(root, words[4]);
+    root = addToAVL(root, words[4]);
+    root = addToAVL(root, words[4]);
+    root = addToAVL(root, words[4]);
+    root = addToAVL(root, words[4]);
+    root = addToAVL(root, words[4]);
+    root = addToAVL(root, words[4]);
+    root = addToAVL(root, words[4]);
+    root = addToAVL(root, words[4]);
+    root = addToAVL(root, words[4]);
+    root = addToAVL(root, words[4]);
+    root = addToAVL(root, words[4]);
+    root = addToAVL(root, words[4]);
+    root = addToAVL(root, words[4]);
+    root = addToAVL(root, words[4]);
+    root = addToAVL(root, words[4]);
+    root = addToAVL(root, words[4]);
+    root = addToAVL(root, words[4]);
+    root = addToAVL(root, words[4]);
+    root = addToAVL(root, words[4]);
+    root = addToAVL(root, words[4]);
+    root = addToAVL(root, words[4]);
+    root = addToAVL(root, words[4]);
+    root = addToAVL(root, words[4]);
+    root = addToAVL(root, words[4]);
+    root = addToAVL(root, words[4]);
+    root = addToAVL(root, words[4]);
+    root = addToAVL(root, words[4]);
+    root = addToAVL(root, words[4]);
+    root = addToAVL(root, words[4]);
+    root = addToAVL(root, words[4]);
+    root = addToAVL(root, words[4]);
+    root = addToAVL(root, words[4]);
+
+    root = addToAVL(root, words[5]);
+    root = addToAVL(root, words[5]);
+    root = addToAVL(root, words[5]);
+    root = addToAVL(root, words[5]);
+    root = addToAVL(root, words[5]);
+    root = addToAVL(root, words[5]);
+    root = addToAVL(root, words[5]);
+    root = addToAVL(root, words[5]);
+    root = addToAVL(root, words[5]);
+    root = addToAVL(root, words[5]);
+    root = addToAVL(root, words[5]);
+    root = addToAVL(root, words[5]);
+    root = addToAVL(root, words[5]);
+    root = addToAVL(root, words[5]);
+    root = addToAVL(root, words[5]);
+    root = addToAVL(root, words[5]);
+    root = addToAVL(root, words[5]);
+    root = addToAVL(root, words[5]);
+    root = addToAVL(root, words[5]);
+    root = addToAVL(root, words[5]);
+    root = addToAVL(root, words[5]);
+    root = addToAVL(root, words[5]);
+    root = addToAVL(root, words[5]);
+    root = addToAVL(root, words[5]);
+    root = addToAVL(root, words[5]);
+
+    // preOrder(root);
+    byLevel(root);
+}
+
+void printInfoArray(Item *wordsList, long size) {
+    int currentIndex = 0;
+    for (currentIndex = 0; currentIndex < size; currentIndex++) {
+        printf("%s: %ld\n", wordsList[currentIndex].word, wordsList[currentIndex].occurrences);
+    }
+}
+
 int main(int argc, char **argv) {
     int rank;
 
-    MPI_Datatype subTaskType;
+    MPI_Datatype subTaskType, itemType;
     MPI_Status status;
 
-    MPI_Init(&argc,&argv);
+    SubTask subTask;
+    Item *receivedData = malloc(sizeof(Item) * TASK_ARRAY_SIZE * num_processes);;
+    Item *wordsList = calloc(TASK_ARRAY_SIZE, sizeof(Item));
+    struct BTreeNode *avl;
+    long size = TASK_ARRAY_SIZE;
+    double startTime;
+
+    MPI_Init(&argc, &argv);
     MPI_Comm_size(MPI_COMM_WORLD, &num_processes);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
     num_processes -= 1;
-
+    
     createSubTaskMPIStruct(&subTaskType);
-
-    SubTask subTask;
+    createItemMPIStruct(&itemType);
 
     if (rank == MASTER_PROCESS_ID){
         FileInfo *filesInfos = getFilesInfos();
@@ -828,10 +1217,19 @@ int main(int argc, char **argv) {
         long *arrayBytesPerProcess = getNumberOfElementsPerProcess(num_processes, totalBytes);
         printArray(arrayBytesPerProcess, 0, num_processes);
         divideFilesBetweenProcesses(taskArray, taskArrayCurrentSize, arrayBytesPerProcess, filesInfos, FILE_NUMBER);
-        // printf("%d\n", *taskArrayCurrentSize);
+        printf("%ld\n", *taskArrayCurrentSize);
         printTaskArray(taskArray, *taskArrayCurrentSize);
 
+        startTime = MPI_Wtime();
+
         scatterTasks(taskArray, *taskArrayCurrentSize, subTaskType);
+
+        // char c[100] = {'À', 'Á', 'Â', 'Ã', 'Ä', 'Å', 'Æ', 'Ç', 'È', 'É', 'Ê', 'Ë', 'Ì', 'Í', 'Î', 'Ï', 'Ð', 'Ñ', 'Ò', 'Ó', 'Ô', 'Õ', 'Ö', 'Ø','Ù', 'Ú', 'Û', 'Ü', 'Ý', 'Þ', 'ß', 'à', 'á', 'â', 'ã', 'ä', 'å', 'æ', 'ç', 'è', 'é', 'ê', 'ë', 'ì', 'í', 'î', 'ï', 'ð', 'ñ', 'ò', 'ó', 'ô', 'õ', 'ö', 'ø', 'ù', 'ú', 'û', 'ü', 'ý', 'þ', 'ÿ', 0};
+        // int i = 0;
+        // while (c[i] != 0)
+        // printf("%c = %d\n", c[i], c[i++]);
+
+        // MPI_Gather(wordsList, TASK_ARRAY_SIZE, itemType, wordsList, TASK_ARRAY_SIZE, itemType, MASTER_PROCESS_ID, MPI_COMM_WORLD);
         
     } else {
         int numerOfTasks = 0;
@@ -840,29 +1238,51 @@ int main(int argc, char **argv) {
         int currentTask = 0;
         for (currentTask = 0; currentTask < numerOfTasks; currentTask++) {
             MPI_Recv(&subTask, 1, subTaskType, MASTER_PROCESS_ID, TAG, MPI_COMM_WORLD, &status);
-            // printf("Processo [%d] ho ricevuto %s - % ld - %ld\n", rank, subTask.fileName, subTask.startFromBytes, subTask.endToBytes);
+            printf("Processo [%d] I received %s - % ld - %ld\n", rank, subTask.fileName, subTask.startFromBytes, subTask.endToBytes);
             printf("[%d] Counting words...\n", rank);
-            double startTime = MPI_Wtime();
-            struct BTreeNode *btree = countWords(&subTask, rank);
+            avl = countWords(&subTask, rank);
             printf("[%d] Word counted!\n", rank);
             // byLevel(btree);
+            // preOrder(btree);
+            // inOrder(avl);
+            // Item *wordsList = calloc(TASK_ARRAY_SIZE, sizeof(Item));
+            printf("[%d] Sending data to master process...\n", rank);
+            size = createArrayFromAVL(wordsList, avl, 0);
+            // createCSV(wordsList, size, rank);
+            // printInfoArray(wordsList, size);
+            printf("SIZE: %ld\n", size);
             // printf("\n\n");
-            printf("[%d] Ordering words...\n", rank);
-            Item *heap = calloc(MAX_HEAP_SIZE, sizeof(Item));
-            int size = createOrderedArrayFromBtree(heap, btree);
-            printf("[%d] Words ordered!\n", rank);
-            printf("[%d] Creating CSV...\n", rank);
+            // Item *heap = calloc(MAX_HEAP_SIZE, sizeof(Item));
+            // int size = createOrderedArrayFromBtree(heap, btree);
             // printHeap(heap, size);
-            createCSV(heap, size, rank);
-            double endTime = MPI_Wtime();
-            printf("[%d] CSV created!\n", rank);
-            double totalTime = endTime - startTime;
-            printf("[%d] Execution time: %f\n", rank, totalTime);
-
-
+            
             // testHeap();
-
+            // testAVL();
         }
+    }
+
+    int receive_from_process[2] = {TASK_ARRAY_SIZE};
+    int displs[num_processes];
+    displs[0] = 0;
+    int i = 0;
+    for (i = 1; i < num_processes; i++) {
+        displs[i] = displs[i - 1] + receive_from_process[i - 1];
+    }
+
+    // MPI_Gatherv(wordsList, size, itemType, receivedData, receive_from_process, displs, itemType, MASTER_PROCESS_ID, MPI_COMM_WORLD);
+    if (rank != MASTER_PROCESS_ID) {
+        printf("Invio: %s - %ld\n", wordsList[0].word, wordsList[0].occurrences);
+        // MPI_Send(&wordsList[0], 1, itemType, MASTER_PROCESS_ID, TAG, MPI_COMM_WORLD);
+        printf("[%d] Data sended!\n", rank);
+    } else {
+        // Item it;
+        // MPI_Recv(&it, 1, itemType, 1, TAG, MPI_COMM_WORLD, &status);
+        printf("[%d] Creating CSV...\n", rank);
+        // createCSV(heap, size, rank);
+        double endTime = MPI_Wtime();
+        printf("[%d] CSV created!\n", rank);
+        double totalTime = endTime - startTime;
+        printf("[%d] Execution time: %f\n", rank, totalTime);
     }
 
     MPI_Finalize();
