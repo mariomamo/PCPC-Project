@@ -1,9 +1,9 @@
 WORD,COUNT
-a,10
-b,20
-c,29
-c,1
-d,40
-e,17
-e,33
-f,25
+zozzone,5
+amore,3
+zorro,3
+zulu,2
+anice,1
+banana,1
+bananifero,1
+bananone,1
