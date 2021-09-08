@@ -8,7 +8,7 @@
 #define MAX_FILE_NAME_LENGTH 255
 #define MAX_WORD_SIZE 1024
 #define FILE_NUMBER 1
-#define TASK_ARRAY_SIZE 400000
+#define TASK_ARRAY_SIZE 40000
 #define MAX_HEAP_SIZE 4000
 #define TASK_ARRAY_SIZE_2 2
 #define MASTER_PROCESS_ID 0
@@ -101,14 +101,14 @@ int getFileSize(char *fileName) {
 FileInfo* getFilesInfos() {
     // char *fileNames[MAX_FILE_NAME_LENGTH] = {
         // "files/610_parole_HP.txt",
-        // "files/1000_parole_italiane.txt",
-        // "files/6000_parole_italiane.txt",
+    //     "files/1000_parole_italiane.txt",
+    //     "files/6000_parole_italiane.txt",
         // "files/280000_parole_italiane.txt",
-        // "files/test.txt",
+    //     "files/test.txt",
         // "files/altri/commedia.txt",
         // "files/altri/bible.txt",
-        // "files/altri/03-The_Return_Of_The_King.txt",
-        // "files/altri/02-The_Two_Towers.txt",
+    //     "files/altri/03-The_Return_Of_The_King.txt",
+    //     "files/altri/02-The_Two_Towers.txt",
     // };
 
     char *fileNames[MAX_FILE_NAME_LENGTH] = {
@@ -116,7 +116,7 @@ FileInfo* getFilesInfos() {
     //     "files/test_count.txt",
     //     "files/test.txt",
     //     "files/test2.txt",
-    //     "files/test3.txt"
+        // "files/test3.txt"
     };
 
     FileInfo *filesInfos = malloc(FILE_NUMBER * sizeof(FileInfo));
@@ -566,11 +566,11 @@ void preOrder(struct BTreeNode *rootNode) {
     }
 }
 
-void inOrder(struct BTreeNode *rootNode, int rank){
+void inOrder(struct BTreeNode *rootNode){
     if (rootNode != NULL) {
-        inOrder(rootNode -> left, rank);
-        printf("[%d] %s: %ld\n", rank, rootNode -> word, rootNode -> occurrences);
-        inOrder(rootNode -> right, rank);
+        inOrder(rootNode -> left);
+        printf("%s: %ld\n", rootNode -> word, rootNode -> occurrences);
+        inOrder(rootNode -> right);
     }
 }
 
@@ -578,7 +578,7 @@ long createArrayFromAVL(Item *wordsList, struct BTreeNode *rootNode, long index)
     if (rootNode != NULL) {
         index = createArrayFromAVL(wordsList, rootNode -> left, index);
         wordsList[index++] = *newItemWithValues(rootNode -> word, rootNode -> occurrences);
-        // printf("INDEX: %ld\n", index);
+        printf("INDEX: %d\n", index);
         return createArrayFromAVL(wordsList, rootNode -> right, index);
     }
     return index;
@@ -848,7 +848,7 @@ void swapItems(Item *item1, Item *item2) {
     strcpy(item2 -> word, temp -> word);
     item2 -> occurrences = temp -> occurrences;
 
-    // free(temp);
+    free(temp);
 }
 
 void maxHeapify(Item *heap, long currPos) {
@@ -861,39 +861,39 @@ void maxHeapify(Item *heap, long currPos) {
     }
 }
 
-// int createOrderedArrayFromBtree(Item *heap, struct BTreeNode *btree) {
-//     // Item *heap = calloc(MAX_HEAP_SIZE, sizeof(Item));
-//     if ((strcmp(btree -> word, "")) == 0 && btree -> occurrences == 0 && btree -> left == NULL && btree -> right == NULL) return -1;
-//     int maxNodes = MAX_HEAP_SIZE;
-//     struct BTreeNode *nodesToScan[maxNodes];
-//     int actualIndex = 0;
-//     int lastIndex = 1;
-//     int maximumIndex = 1;
-//     nodesToScan[actualIndex] = btree;
-//     for (actualIndex = 0; actualIndex < maximumIndex; actualIndex++) {
-//         struct BTreeNode *currentNode = nodesToScan[actualIndex];
-//         // printf("%s: %ld\n", currentNode -> word, currentNode -> occurrences);
+int createOrderedArrayFromBtree(Item *heap, struct BTreeNode *btree) {
+    // Item *heap = calloc(MAX_HEAP_SIZE, sizeof(Item));
+    if ((strcmp(btree -> word, "")) == 0 && btree -> occurrences == 0 && btree -> left == NULL && btree -> right == NULL) return -1;
+    int maxNodes = MAX_HEAP_SIZE;
+    struct BTreeNode *nodesToScan[maxNodes];
+    int actualIndex = 0;
+    int lastIndex = 1;
+    int maximumIndex = 1;
+    nodesToScan[actualIndex] = btree;
+    for (actualIndex = 0; actualIndex < maximumIndex; actualIndex++) {
+        struct BTreeNode *currentNode = nodesToScan[actualIndex];
+        // printf("%s: %ld\n", currentNode -> word, currentNode -> occurrences);
 
-//         Item *item = newItem();
-//         strcpy(item -> word, currentNode -> word);
-//         item -> occurrences = currentNode -> occurrences;
-//         heap[actualIndex] = *item;
-//         // printf(">> [%d] %s: %ld\n", actualIndex, heap[actualIndex].word, heap[actualIndex].occurrences);
-//         maxHeapify(heap, actualIndex);
+        Item *item = newItem();
+        strcpy(item -> word, currentNode -> word);
+        item -> occurrences = currentNode -> occurrences;
+        heap[actualIndex] = *item;
+        // printf(">> [%d] %s: %ld\n", actualIndex, heap[actualIndex].word, heap[actualIndex].occurrences);
+        maxHeapify(heap, actualIndex);
 
-//         if (currentNode -> left != NULL) {
-//             // printf("ADD LEFT: %s\n", currentNode -> left -> word);
-//             nodesToScan[lastIndex++] = currentNode -> left;
-//             maximumIndex++;
-//         }
-//         if (currentNode -> right != NULL) {
-//             // printf("ADD RIGHT: %s\n", currentNode -> right -> word);
-//             nodesToScan[lastIndex++] = currentNode -> right;
-//             maximumIndex++;
-//         }
-//     }
-//     return actualIndex - 1;
-// }
+        if (currentNode -> left != NULL) {
+            // printf("ADD LEFT: %s\n", currentNode -> left -> word);
+            nodesToScan[lastIndex++] = currentNode -> left;
+            maximumIndex++;
+        }
+        if (currentNode -> right != NULL) {
+            // printf("ADD RIGHT: %s\n", currentNode -> right -> word);
+            nodesToScan[lastIndex++] = currentNode -> right;
+            maximumIndex++;
+        }
+    }
+    return actualIndex - 1;
+}
 
 Item getItemWithValue(char *name, int occurrences) {
     Item item = *newItem();
@@ -1193,69 +1193,6 @@ void printInfoArray(Item *wordsList, long size) {
     }
 }
 
-void merge(Item *wordsList, int leftIndex, int middle, int rightIndex) {
-    int i, j, k;
-    int leftArraySize = middle - leftIndex + 1;
-    int rightArraySize = rightIndex - middle;
- 
-    /* create temp arrays */
-    Item leftArray[leftArraySize], rightArray[rightArraySize];
- 
-    /* Copy data to temp arrays leftArraySize[] and rightArraySize[] */
-    for (i = 0; i < leftArraySize; i++)
-        leftArray[i] = wordsList[leftIndex + i];
-    for (j = 0; j < rightArraySize; j++)
-        rightArray[j] = wordsList[middle + 1 + j];
- 
-    /* Merge the temp arrays back into arr[leftArraySize,...,rightArraySize]*/
-    i = 0; // Initial index of first subarray
-    j = 0; // Initial index of second subarray
-    k = leftIndex; // Initial index of merged subarray
-    while (i < leftArraySize && j < rightArraySize) {
-        int cmp = strcmp(leftArray[i].word, rightArray[j].word) < 0;
-        // printf("CMP: %s - %s -> %d\n", leftArray[i].word, rightArray[i].word, cmp);
-        if (leftArray[i].occurrences < rightArray[j].occurrences) {
-            wordsList[k] = leftArray[i];
-            i++;
-        }
-        else {
-            wordsList[k] = rightArray[j];
-            j++;
-        }
-        k++;
-    }
- 
-    /* Copy the remaining elements of leftArraySize[], if there
-    are any */
-    while (i < leftArraySize) {
-        wordsList[k] = leftArray[i];
-        i++;
-        k++;
-    }
- 
-    /* Copy the remaining elements of rightArraySize[], if there
-    are any */
-    while (j < rightArraySize) {
-        wordsList[k] = rightArray[j];
-        j++;
-        k++;
-    }
-}
-
-void mergeSort(Item *wordsList, int leftIndex, int rightIndex) {
-    if (leftIndex < rightIndex) {
-        // Same as (l+r)/2, but avoids overflow for
-        // large l and h
-        int middle = leftIndex + (rightIndex - leftIndex) / 2;
- 
-        // Sort first and second halves
-        mergeSort(wordsList, leftIndex, middle);
-        mergeSort(wordsList, middle + 1, rightIndex);
- 
-        merge(wordsList, leftIndex, middle, rightIndex);
-    }
-}
-
 int main(int argc, char **argv) {
     int rank;
 
@@ -1263,8 +1200,7 @@ int main(int argc, char **argv) {
     MPI_Status status;
 
     SubTask subTask;
-    Item *receivedData = malloc(sizeof(Item) * TASK_ARRAY_SIZE * num_processes);
-    // Item wordsList[TASK_ARRAY_SIZE];
+    Item *receivedData = malloc(sizeof(Item) * TASK_ARRAY_SIZE * num_processes);;
     Item *wordsList = calloc(TASK_ARRAY_SIZE, sizeof(Item));
     struct BTreeNode *avl;
     long size = TASK_ARRAY_SIZE;
@@ -1281,8 +1217,8 @@ int main(int argc, char **argv) {
 
     Item *recv;
 
-    if (rank == MASTER_PROCESS_ID) {
-        // receivedData = malloc(sizeof(Item) * TASK_ARRAY_SIZE * num_processes);
+    if (rank == MASTER_PROCESS_ID){
+        recv = calloc(num_processes * TASK_ARRAY_SIZE, sizeof(Item));
         FileInfo *filesInfos = getFilesInfos();
         int totalBytes = getTotalBytesFromFiles(filesInfos, FILE_NUMBER);
         Task *taskArray = calloc(TASK_ARRAY_SIZE, sizeof(Task));
@@ -1296,6 +1232,13 @@ int main(int argc, char **argv) {
         startTime = MPI_Wtime();
 
         scatterTasks(taskArray, *taskArrayCurrentSize, subTaskType);
+
+        // char c[100] = {'À', 'Á', 'Â', 'Ã', 'Ä', 'Å', 'Æ', 'Ç', 'È', 'É', 'Ê', 'Ë', 'Ì', 'Í', 'Î', 'Ï', 'Ð', 'Ñ', 'Ò', 'Ó', 'Ô', 'Õ', 'Ö', 'Ø','Ù', 'Ú', 'Û', 'Ü', 'Ý', 'Þ', 'ß', 'à', 'á', 'â', 'ã', 'ä', 'å', 'æ', 'ç', 'è', 'é', 'ê', 'ë', 'ì', 'í', 'î', 'ï', 'ð', 'ñ', 'ò', 'ó', 'ô', 'õ', 'ö', 'ø', 'ù', 'ú', 'û', 'ü', 'ý', 'þ', 'ÿ', 0};
+        // int i = 0;
+        // while (c[i] != 0)
+        // printf("%c = %d\n", c[i], c[i++]);
+
+        // MPI_Gather(wordsList, TASK_ARRAY_SIZE, itemType, wordsList, TASK_ARRAY_SIZE, itemType, MASTER_PROCESS_ID, MPI_COMM_WORLD);
         
     } else {
         int numerOfTasks = 0;
@@ -1307,12 +1250,12 @@ int main(int argc, char **argv) {
             printf("Processo [%d] I received %s - % ld - %ld\n", rank, subTask.fileName, subTask.startFromBytes, subTask.endToBytes);
             printf("[%d] Counting words...\n", rank);
             avl = countWords(&subTask, rank);
-            // printf("[%d] Word counted!\n", rank);
+            printf("[%d] Word counted!\n", rank);
             // byLevel(btree);
             // preOrder(btree);
-            inOrder(avl, rank);
+            // inOrder(avl);
             // Item *wordsList = calloc(TASK_ARRAY_SIZE, sizeof(Item));
-            // printf("[%d] Sending data to master process...\n", rank);
+            printf("[%d] Sending data to master process...\n", rank);
             size = createArrayFromAVL(wordsList, avl, 0);
             // createCSV(wordsList, size, rank);
             // printInfoArray(wordsList, size);
@@ -1327,95 +1270,30 @@ int main(int argc, char **argv) {
         }
     }
 
-    int *wordsListSizes = calloc(num_processes, sizeof(int));
-    MPI_Gather(&size, 1, MPI_INT, &wordsListSizes[rank], 1, MPI_INT, MASTER_PROCESS_ID, MPI_COMM_WORLD);
-
-    int wordsListRecvCounts[num_processes];
-    wordsListRecvCounts[0] = 0;
+    int recvCounts[num_processes];
+    recvCounts[0] = 0;
     
-    int wordsListDispls[num_processes];
-    if (rank == MASTER_PROCESS_ID) {
-        size = 0;
-        wordsListDispls[0] = 0;
-        // printf("Displs[%d] = %d\n", 0, displs[0]);
-        int i = 0;
-        for (i = 1; i <= num_processes; i++) {
-            wordsListRecvCounts[i] = wordsListSizes[i];
-            wordsListDispls[i] = wordsListDispls[i - 1] + wordsListRecvCounts[i - 1];
-            size += wordsListSizes[i];
-            // printf("wordsListRecvCounts[%d] = %d\n", i, wordsListRecvCounts[i]);
-        }
-
-        recv = calloc(num_processes * size, sizeof(Item));
+    int displs[num_processes];
+    displs[0] = 0;
+    // printf("Displs[%d] = %d\n", 0, displs[0]);
+    int i = 0;
+    for (i = 1; i <= num_processes; i++) {
+        recvCounts[i] = size;
+        displs[i] = displs[i - 1] + recvCounts[i - 1];
+        // printf("Displs[%d] = %d\n", i, displs[i]);
     }
 
-    // if (rank != MASTER_PROCESS_ID) {
-    //     for (i = 0; i < size; i++) {
-    //         printf("[%d] Invio %s - %ld\n", rank, wordsList[i].word, wordsList[i].occurrences);
-    //     }
-    // }
-
-    printf("FINE INVIO\n");
-
-    // MPI_Gather(values, 2, MPI_INT, recv, 2, MPI_INT, MASTER_PROCESS_ID, MPI_COMM_WORLD);
-    // MPI_Gatherv(&wordsList, 2, itemType, recv, recvCounts, displs, itemType, MASTER_PROCESS_ID, MPI_COMM_WORLD);
-    // MPI_Gatherv(&size, 1, MPI_INT, wordsListSizes, wordsListRecvSizeCounts, wordsListDispls, MPI_INT, MASTER_PROCESS_ID, MPI_COMM_WORLD);
-    MPI_Gatherv(wordsList, size, itemType, recv, wordsListRecvCounts, wordsListDispls, itemType, MASTER_PROCESS_ID, MPI_COMM_WORLD);
+    // MPI_Gatherv(wordsList, size, itemType, receivedData, receive_from_process, displs, itemType, MASTER_PROCESS_ID, MPI_COMM_WORLD);
+    MPI_Gatherv(&wordsList, size, itemType, recv, recvCounts, displs, itemType, MASTER_PROCESS_ID, MPI_COMM_WORLD);
     if (rank != MASTER_PROCESS_ID) {
-        // char name[4] = {"Ciao"};
-        // Item it = *newItemWithValues(name, 12);
-        // it.occurrences = 130;
-        // MPI_Send(&it, 1, itemType, MASTER_PROCESS_ID, TAG, MPI_COMM_WORLD);
-        // printf("SENDED %s - %ld\n", it.word, it.occurrences);
-        // printf("Invio: %s - %ld\n", wordsList[0].word, wordsList[0].occurrences);
+        printf("Invio: %s - %ld\n", wordsList[0].word, wordsList[0].occurrences);
         // MPI_Send(&wordsList[0], 1, itemType, MASTER_PROCESS_ID, TAG, MPI_COMM_WORLD);
-        // printf("[%d] Data sended!\n", rank);
+        printf("[%d] Data sended!\n", rank);
     } else {
-        printf("RECEIVED SIZE: %d - %d\n", wordsListSizes[1], wordsListSizes[2]);
-        // printf("RECEIVED: %s %ld\n", it.word, it.occurrences);
-        // printf(">>> [%d] Mi è arrivato [(%s - %ld) (%s - %ld)] [(%s - %ld) (%s - %ld)] [(%s - %ld) (%s - %ld)] [(%s - %ld) (%s - %ld)]\n", rank, recv[0].word, recv[0].occurrences, recv[1].word, recv[1].occurrences, recv[2].word, recv[2].occurrences, recv[3].word, recv[3].occurrences, recv[4].word, recv[4].occurrences, recv[5].word, recv[5].occurrences, recv[6].word, recv[6].occurrences, recv[7].word, recv[7].occurrences);
-        // int current_process;
-        // int current_index;
-        // int size = 0;
-        // for (current_process = 0; current_process <= num_processes; current_process++) {
-        //     for (current_index = 0; current_index < TASK_ARRAY_SIZE; current_index++) {
-        //         Item *currentItem = recv + (TASK_ARRAY_SIZE * current_process) + current_index;
-        //         if (strcmp(currentItem -> word, "") == 0) break;
-        //         size++;
-        //         printf("<<< RECV[%d]: %s - %ld\n", current_process + 1, currentItem -> word, currentItem -> occurrences);
-        //     }
-        // }
-
-        printf("%ld\n", recv[0].occurrences);
-        printf("%ld\n", recv[wordsListSizes[1]].occurrences);
-        printf("%ld\n", recv[wordsListSizes[1] + wordsListSizes[2]].occurrences);
-        // printf("%ld\n", recv[wordsListSizes[1]].occurrences);
-
-        int i;
-        // for (i = 0; i < size; i++) {
-        //     printf("<<< RECV[%d]: %s - %ld\n", rank, recv[i].word, recv[i].occurrences);
-        // }
-
-        // printf("============\n");
-
-        // mergeSort(recv, 0, size - 1);
-
-        // for (i = 0; i < size; i++) {
-        //     printf("<<< RECV[%d]: %s - %ld\n", rank, recv[i].word, recv[i].occurrences);
-        // }
-
-        int j, partial = 0;
-        for (i = 1; i <= num_processes; i++) {
-            for (j = 0; j < wordsListSizes[i]; j++) {
-                printf("<<< RECV[%d]: %s - %ld\n", j, recv[j + partial].word, recv[j + partial].occurrences);
-                partial++;
-            }
-        }
-
-        printf("My SIZE: %ld\n", size);
-
+        // Item it;
+        // MPI_Recv(&it, 1, itemType, 1, TAG, MPI_COMM_WORLD, &status);
         printf("[%d] Creating CSV...\n", rank);
-        createCSV(recv, size, rank);
+        // createCSV(heap, size, rank);
         double endTime = MPI_Wtime();
         printf("[%d] CSV created!\n", rank);
         double totalTime = endTime - startTime;

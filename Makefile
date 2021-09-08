@@ -2,7 +2,7 @@ CC=mpicc
 MAIN=projectmain
 OUT=progetto
 EXT=.o
-PROCESSES=2
+PROCESSES=4
 
 main.o: clean $(MAIN)$(EXT)
 	$(CC) $(MAIN)$(EXT) -o $(OUT)$(EXT)
