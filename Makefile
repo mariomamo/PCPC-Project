@@ -2,7 +2,7 @@ CC=mpicc
 MAIN=projectmain
 OUT=progetto
 EXT=.o
-PROCESSES=2
+PROCESSES=6
 
 main.o: clean $(MAIN)$(EXT)
 	$(CC) $(MAIN)$(EXT) -o $(OUT)$(EXT)
@@ -14,4 +14,4 @@ clean:
 	rm -f *.o
 
 run:
-	mpirun --allow-run-as-root -np $(PROCESSES) $(OUT)$(EXT) --oversubscribe
+	mpirun --mca btl_vader_single_copy_mechanism none --allow-run-as-root -np $(PROCESSES) $(OUT)$(EXT) --oversubscribe
