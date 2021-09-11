@@ -368,14 +368,33 @@ void createItemMPIStruct(MPI_Datatype *itemType) {
     MPI_Type_commit(itemType);
 }
 
+// void scatterTasks(Task *taskArray, int taskArrayCurrentSize, MPI_Datatype subTaskType) {
+//     int taskIndex = 0;
+//     MPI_Request req;
+//     for (taskIndex = 0; taskIndex < taskArrayCurrentSize; taskIndex++) {
+//         Task task = taskArray[taskIndex];
+//         long subTaskIndex = 0;
+//         // MPI_Isend(&task.size, 1, MPI_INT, taskIndex + 1, TAG, MPI_COMM_WORLD, &req);
+//         MPI_Send(&task.size, 1, MPI_INT, taskIndex + 1, TAG, MPI_COMM_WORLD);
+//         for (subTaskIndex = 0; subTaskIndex < task.size; subTaskIndex++) {
+//             SubTask subTask = task.subTasks[subTaskIndex];
+//             // MPI_Isend(&subTask, 1, subTaskType, taskIndex + 1, TAG, MPI_COMM_WORLD, &req);
+//             MPI_Send(&subTask, 1, subTaskType, taskIndex + 1, TAG, MPI_COMM_WORLD);
+//         }
+//     }
+// }
+
 void scatterTasks(Task *taskArray, int taskArrayCurrentSize, MPI_Datatype subTaskType) {
     int taskIndex = 0;
+    MPI_Request req;
     for (taskIndex = 0; taskIndex < taskArrayCurrentSize; taskIndex++) {
         Task task = taskArray[taskIndex];
         long subTaskIndex = 0;
+        // MPI_Isend(&task.size, 1, MPI_INT, taskIndex + 1, TAG, MPI_COMM_WORLD, &req);
         MPI_Send(&task.size, 1, MPI_INT, taskIndex + 1, TAG, MPI_COMM_WORLD);
         for (subTaskIndex = 0; subTaskIndex < task.size; subTaskIndex++) {
             SubTask subTask = task.subTasks[subTaskIndex];
+            // MPI_Isend(&subTask, 1, subTaskType, taskIndex + 1, TAG, MPI_COMM_WORLD, &req);
             MPI_Send(&subTask, 1, subTaskType, taskIndex + 1, TAG, MPI_COMM_WORLD);
         }
     }
@@ -661,8 +680,7 @@ int main(int argc, char **argv) {
         long *arrayBytesPerProcess = getNumberOfElementsPerProcess(num_processes, totalBytes);
         printArray(arrayBytesPerProcess, 0, num_processes);
         divideFilesBetweenProcesses(taskArray, taskArrayCurrentSize, arrayBytesPerProcess, filesInfos, FILE_NUMBER);
-        sprintf(message, "%ld\n", *taskArrayCurrentSize);
-        logMessage(message, rank);
+        printTaskArray(taskArray, *taskArrayCurrentSize);
 
         startTime = MPI_Wtime();
 
