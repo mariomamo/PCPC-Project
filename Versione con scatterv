@@ -7,10 +7,9 @@
 #define MAX_FILE_LIST_SIZE 100
 #define MAX_FILE_NAME_LENGTH 255
 #define MAX_WORD_SIZE 1024
-#define FILE_NUMBER 6
+#define FILE_NUMBER 2
 #define TASK_ARRAY_SIZE 400000
 #define MAX_HEAP_SIZE 4000
-#define TASK_ARRAY_SIZE_2 2
 #define MASTER_PROCESS_ID 0
 #define TAG 100
 #define MAX(a,b) (((a)>(b))?(a):(b))
@@ -99,13 +98,13 @@ FileInfo* getFilesInfos() {
     char *fileNames[MAX_FILE_NAME_LENGTH] = {
         // "files/610_parole_HP.txt",
         // "files/1000_parole_italiane.txt",
-        "files/6000_parole_italiane.txt",
-        "files/280000_parole_italiane.txt",
+        // "files/6000_parole_italiane.txt",
+        // "files/280000_parole_italiane.txt",
         // "files/test.txt",
         "files/altri/commedia.txt",
         "files/altri/bible.txt",
-        "files/altri/03-The_Return_Of_The_King.txt",
-        "files/altri/02-The_Two_Towers.txt",
+        // "files/altri/03-The_Return_Of_The_King.txt",
+        // "files/altri/02-The_Two_Towers.txt",
     };
 
     // char *fileNames[MAX_FILE_NAME_LENGTH] = {
@@ -170,23 +169,38 @@ void printArray(long *values, int my_rank, int size) {
 
     for (i = 0; i < size; i++) {
         sprintf(msg, "########## values[%d]: %ld\n", i, values[i]);
-        
+        logMessage(msg, MASTER_PROCESS_ID);
     }
 }
 
 void printSubTaskArray(SubTask *values, int process, int size) {
     int i;
     char msg[1000];
-
     for (i = 0; i < size; i++) {
         sprintf(msg, ">>>>>> process[%d]: %s, %ld, %ld\n", process, values[i].fileName, values[i].startFromBytes, values[i].endToBytes);
         logMessage(msg, MASTER_PROCESS_ID);
     }
 }
 
+void printSubTaskArray2(SubTask *subTaskArray, long arraySize, int *sendCounts) {
+    printf("SIZE: %ld\n", arraySize);
+    int i;
+    char msg[1024];
+    int process = 0;
+    int countPerProcess = sendCounts[process];
+    for (i = 0; i < arraySize; i++) {
+        sprintf(msg, ">>>>>> process[%d]: %s, %ld, %ld\n", process, subTaskArray[i].fileName, subTaskArray[i].startFromBytes, subTaskArray[i].endToBytes);
+        logMessage(msg, MASTER_PROCESS_ID);
+        countPerProcess--;
+        
+        if (countPerProcess <= 0) {
+            countPerProcess = sendCounts[++process];
+        }
+    }
+}
+
 void printTaskArray(Task *values, long arraySize) {
-    sprintf(message, "ARRAY SIZE: %ld\n", arraySize);
-    logMessage(message, MASTER_PROCESS_ID);
+    // logMessage(message, MASTER_PROCESS_ID);
     int i;
     char msg[1000];
     for (int i = 0; i < arraySize; i++) {
@@ -223,7 +237,7 @@ int getSendedBytes(int endToBytes, int startFromBytes) {
 long addSubTask(Task *task, long subTaskArrayMaximumSize, SubTask newSubTask) {
     SubTask *tempArray = task -> subTasks;
     if (subTaskArrayMaximumSize <= task -> size) {
-        subTaskArrayMaximumSize += TASK_ARRAY_SIZE_2;
+        subTaskArrayMaximumSize += TASK_ARRAY_SIZE;
         tempArray = realloc(tempArray, subTaskArrayMaximumSize * sizeof(SubTask));
     }
     tempArray[task -> size] = newSubTask;
@@ -232,9 +246,18 @@ long addSubTask(Task *task, long subTaskArrayMaximumSize, SubTask newSubTask) {
     return subTaskArrayMaximumSize;
 }
 
+SubTask* addSubTask2(SubTask *subTaskArray, long *taskArrayCurrentSize, long *subTaskArrayMaximumSize, SubTask newSubTask) {
+    if (*subTaskArrayMaximumSize <= *taskArrayCurrentSize) {
+        *subTaskArrayMaximumSize += TASK_ARRAY_SIZE;
+        subTaskArray = realloc(subTaskArray, *subTaskArrayMaximumSize * sizeof(SubTask));
+    }
+    subTaskArray[(*taskArrayCurrentSize)++] = newSubTask;
+    return subTaskArray;
+}
+
 Task* newTask() {
     Task *task = malloc(1 * sizeof(Task));
-    task -> subTasks = malloc(TASK_ARRAY_SIZE_2 * sizeof(SubTask));
+    task -> subTasks = malloc(TASK_ARRAY_SIZE * sizeof(SubTask));
     task -> size = 0;
     return task;
 }
@@ -252,7 +275,7 @@ int addTask(Task *taskArray, long taskArrayCurrentSize, Task *task) {
     SubTask *temp = task -> subTasks;
     task -> subTasks = realloc(task -> subTasks, task -> size * sizeof(SubTask));
     taskArray[taskArrayCurrentSize] = *task;
-    task -> subTasks = calloc(TASK_ARRAY_SIZE_2, sizeof(SubTask));
+    task -> subTasks = calloc(TASK_ARRAY_SIZE, sizeof(SubTask));
     task -> size = 0;
     return taskArrayCurrentSize + 1;
 }
@@ -267,7 +290,7 @@ Task *divideFilesBetweenProcesses(Task *taskArray, long *taskArrayCurrentSize, l
     Task *task = newTask();
     long startFromBytes;
     long endToBytes;
-    long subTaskArrayMaximumSize = TASK_ARRAY_SIZE_2;
+    long subTaskArrayMaximumSize = TASK_ARRAY_SIZE;
     SubTask subTask = *newSubTask(subTask.fileName, subTask.startFromBytes, subTask.endToBytes);
     
     while (thereAreFilesToSplit(currentFileInfo, numFiles,currentProcess)) {
@@ -315,6 +338,77 @@ Task *divideFilesBetweenProcesses(Task *taskArray, long *taskArrayCurrentSize, l
     }
 
     return taskArray;
+}
+
+SubTask *divideFilesBetweenProcesses2(int *sendCounts, int *displs, long *taskArrayCurrentSize, long *arrayBytesPerProcess, FileInfo *filesInfos, int numFiles) {
+
+    *taskArrayCurrentSize = 0;
+    long remainingBytesToRead = arrayBytesPerProcess[0];
+    int currentFileInfo = 0;
+    long startOffset = 0;
+    int currentProcess = 0;
+    int sendedBytes = 0;
+    long subTaskArrayMaximumSize = TASK_ARRAY_SIZE;
+    SubTask *subTaskArray = calloc(subTaskArrayMaximumSize, sizeof(SubTask));
+    long startFromBytes;
+    long endToBytes;
+    SubTask subTask = *newSubTask(subTask.fileName, subTask.startFromBytes, subTask.endToBytes);
+
+    displs[0] = 0;
+    sendCounts[0] = 0;
+    
+    while (thereAreFilesToSplit(currentFileInfo, numFiles, currentProcess)) {
+        startFromBytes = startOffset;
+        if (canProcessReadWholeFile(filesInfos[currentFileInfo], startOffset, remainingBytesToRead)) {
+            endToBytes = filesInfos[currentFileInfo].fileSize;
+            setSubTask(&subTask, filesInfos[currentFileInfo], startOffset, endToBytes);
+            sendedBytes = getSendedBytes(endToBytes, startFromBytes);
+            remainingBytesToRead -= sendedBytes;
+            subTaskArray = addSubTask2(subTaskArray, taskArrayCurrentSize, &subTaskArrayMaximumSize, subTask);
+            sendCounts[currentProcess + 1]++;
+            if (currentProcess < num_processes - 1) {
+                displs[currentProcess + 2]++;
+            }
+
+            currentFileInfo++;
+            startOffset = 0;
+            
+            if (remainingBytesToRead == 0) {
+                remainingBytesToRead = arrayBytesPerProcess[currentProcess];
+                currentProcess++;
+                if (currentProcess < num_processes) {
+                    displs[currentProcess] += displs[currentProcess - 1];
+                }
+            }
+
+        } else {
+            endToBytes = startOffset + remainingBytesToRead;
+            setSubTask(&subTask, filesInfos[currentFileInfo], startOffset, endToBytes);
+            sendedBytes = getSendedBytes(endToBytes, startFromBytes);
+            remainingBytesToRead -= sendedBytes;
+
+            subTaskArray = addSubTask2(subTaskArray, taskArrayCurrentSize, &subTaskArrayMaximumSize, subTask);
+            sendCounts[currentProcess + 1]++;
+            if (currentProcess < num_processes - 1) {
+                displs[currentProcess + 2]++;
+            }
+
+            if (isFileEnded(sendedBytes, filesInfos[currentFileInfo], startOffset)) {
+                currentFileInfo++;
+                startOffset = 0;
+            } else {
+                startOffset = endToBytes;
+            }
+
+            currentProcess++;
+            if (currentProcess < num_processes) {
+                displs[currentProcess] += displs[currentProcess - 1];
+            }
+            remainingBytesToRead = arrayBytesPerProcess[currentProcess];
+        }
+    }
+
+    return subTaskArray;
 }
 
 void createSubTaskMPIStruct(MPI_Datatype *subTaskType) {
@@ -386,21 +480,17 @@ void createItemMPIStruct(MPI_Datatype *itemType) {
 
 void scatterTasks(Task *taskArray, int taskArrayCurrentSize, MPI_Datatype subTaskType) {
     int taskIndex = 0;
-    int requestsIndex = 0;
-    MPI_Request *requests = calloc(num_processes * 2, sizeof(MPI_Request));
+    MPI_Request req;
     for (taskIndex = 0; taskIndex < taskArrayCurrentSize; taskIndex++) {
         Task task = taskArray[taskIndex];
         long subTaskIndex = 0;
-        // MPI_Isend(&task.size, 1, MPI_INT, taskIndex + 1, TAG, MPI_COMM_WORLD, requests[taskIndex]);
-        // MPI_Send(&task.size, 1, MPI_INT, taskIndex + 1, TAG, MPI_COMM_WORLD);
-        // MPI_Send(task.subTasks, task.size, subTaskType, taskIndex + 1, TAG, MPI_COMM_WORLD);
-        // TODO: Qua potrei fare un pack
-        MPI_Isend(&task.size, 1, MPI_INT, taskIndex + 1, TAG, MPI_COMM_WORLD, &requests[requestsIndex++]);
-        MPI_Isend(task.subTasks, task.size, subTaskType, taskIndex + 1, TAG, MPI_COMM_WORLD, &requests[requestsIndex++]);
-    }
-    MPI_Status status;
-    for (taskIndex = 0; taskIndex < requestsIndex; taskIndex++) {
-        MPI_Wait(&requests[taskIndex], &status);
+        // MPI_Isend(&task.size, 1, MPI_INT, taskIndex + 1, TAG, MPI_COMM_WORLD, &req);
+        MPI_Send(&task.size, 1, MPI_INT, taskIndex + 1, TAG, MPI_COMM_WORLD);
+        for (subTaskIndex = 0; subTaskIndex < task.size; subTaskIndex++) {
+            SubTask subTask = task.subTasks[subTaskIndex];
+            // MPI_Isend(&subTask, 1, subTaskType, taskIndex + 1, TAG, MPI_COMM_WORLD, &req);
+            MPI_Send(&subTask, 1, subTaskType, taskIndex + 1, TAG, MPI_COMM_WORLD);
+        }
     }
 }
 
@@ -513,6 +603,7 @@ struct BTreeNode* orderAVLByOccurrences(struct BTreeNode *oldTree, struct BTreeN
 long createArrayFromAVL(Item *wordsList, struct BTreeNode *rootNode, long index) {
     if (rootNode != NULL) {
         index = createArrayFromAVL(wordsList, rootNode -> left, index);
+        // ADDING REALLOC
         wordsList[index++] = *newItemWithValues(rootNode -> word, rootNode -> occurrences);
         return createArrayFromAVL(wordsList, rootNode -> right, index);
     }
@@ -650,10 +741,9 @@ int main(int argc, char **argv) {
 
     MPI_Datatype subTaskType, itemType;
     MPI_Status status;
+    MPI_Request request;
 
     SubTask subTask;
-    Item *receivedData = malloc(sizeof(Item) * TASK_ARRAY_SIZE * num_processes);
-    // Item wordsList[TASK_ARRAY_SIZE];
     Item *wordsList = calloc(TASK_ARRAY_SIZE, sizeof(Item));
     struct BTreeNode *avl;
     long size = TASK_ARRAY_SIZE;
@@ -674,6 +764,10 @@ int main(int argc, char **argv) {
     createSubTaskMPIStruct(&subTaskType);
     createItemMPIStruct(&itemType);
 
+    SubTask *subTaskArray = calloc(TASK_ARRAY_SIZE, sizeof(SubTask));
+    SubTask *recvTaskArray = calloc(TASK_ARRAY_SIZE, sizeof(SubTask));
+    int *sendCounts = calloc(num_processes + 1, sizeof(int));
+    int *displs;
     Item *recv;
 
     if (rank == MASTER_PROCESS_ID) {
@@ -683,29 +777,70 @@ int main(int argc, char **argv) {
         long *taskArrayCurrentSize = malloc(1 * sizeof(long));
         long *arrayBytesPerProcess = getNumberOfElementsPerProcess(num_processes, totalBytes);
         printArray(arrayBytesPerProcess, 0, num_processes);
-        divideFilesBetweenProcesses(taskArray, taskArrayCurrentSize, arrayBytesPerProcess, filesInfos, FILE_NUMBER);
-        printTaskArray(taskArray, *taskArrayCurrentSize);
+
+        sendCounts = calloc(num_processes + 1, sizeof(int));
+        displs = calloc(num_processes + 1, sizeof(int));
+        subTaskArray = divideFilesBetweenProcesses2(sendCounts, displs, taskArrayCurrentSize, arrayBytesPerProcess, filesInfos, FILE_NUMBER);
+        printSubTaskArray2(subTaskArray, *taskArrayCurrentSize, sendCounts);
+
+        // printf("=============\n");
+
+        // divideFilesBetweenProcesses(taskArray, taskArrayCurrentSize, arrayBytesPerProcess, filesInfos, FILE_NUMBER);
+        // printTaskArray(taskArray, *taskArrayCurrentSize);
+
+        int i;
+        for (i = 0; i < num_processes + 1; i++) {
+            printf("SEND COUNTS: %d - DISPLS: %d\n", sendCounts[i], displs[i]);
+        }
 
         startTime = MPI_Wtime();
 
-        scatterTasks(taskArray, *taskArrayCurrentSize, subTaskType);
+        // MPI_Finalize();
+        // return 0;
+
+        // scatterTasks(taskArray, *taskArrayCurrentSize, subTaskType);
         
-    } else {
-        int numberOfTasks = 0;
-        MPI_Recv(&numberOfTasks, 1, MPI_INT, MASTER_PROCESS_ID, TAG, MPI_COMM_WORLD, &status);
-        SubTask *subTasksArray = calloc(numberOfTasks, sizeof(SubTask));
-        MPI_Recv(subTasksArray, numberOfTasks, subTaskType, MASTER_PROCESS_ID, TAG, MPI_COMM_WORLD, &status);
-        int currentTask;
-        for (currentTask = 0; currentTask < numberOfTasks; currentTask++) {
-            subTask = subTasksArray[currentTask];
-            strcpy(message, "Counting words...\n");
-            logMessage(message, rank);
-            avl = countWords(&subTask, rank);
-            strcpy(message, "Word counted! Sending data to master process...\n");
-            logMessage(message, rank);
-            size = createArrayFromAVL(wordsList, avl, 0);
-        }
     }
+
+    // MPI_Finalize();
+    // return 0;
+    
+    
+    MPI_Scatter(sendCounts, 1, MPI_INT, &size, 1, MPI_INT, MASTER_PROCESS_ID, MPI_COMM_WORLD);
+    // printf("[%d] RECEIVED: %ld\n", rank, size);
+    
+    // MPI_Wait(&request, &status);
+
+    MPI_Scatterv(subTaskArray, sendCounts, displs, subTaskType, recvTaskArray, size, subTaskType, MASTER_PROCESS_ID, MPI_COMM_WORLD);
+    // printf("[%d] SENDED\n", rank);
+
+    // MPI_Wait(&request, &status);
+
+    if (rank != MASTER_PROCESS_ID) {
+        printf(">>> [%d] CHILD\n", rank);
+        int i;
+        for (i = 0; i < size; i++) {
+            printf("+-- %s - %ld - %ld\n", recvTaskArray[i].fileName, recvTaskArray[i].startFromBytes, recvTaskArray[i].endToBytes);
+        }
+        // MPI_Finalize();
+        // return 0;
+
+        // int numerOfTasks = 0;
+        // MPI_Recv(&numerOfTasks, 1, MPI_INT, MASTER_PROCESS_ID, TAG, MPI_COMM_WORLD, &status);
+        // int currentTask = 0;
+        // for (currentTask = 0; currentTask < numerOfTasks; currentTask++) {
+        //     MPI_Recv(&subTask, 1, subTaskType, MASTER_PROCESS_ID, TAG, MPI_COMM_WORLD, &status);
+        //     strcpy(message, "Counting words...\n");
+        //     logMessage(message, rank);
+        //     avl = countWords(&subTask, rank);
+        //     strcpy(message, "Word counted! Sending data to master process...\n");
+        //     logMessage(message, rank);
+        //     size = createArrayFromAVL(wordsList, avl, 0);
+        // }
+    }
+
+    MPI_Finalize();
+    return 0;
 
     int *wordsListSizes = calloc(num_processes + 1, sizeof(int));
     MPI_Gather(&size, 1, MPI_INT, &wordsListSizes[rank], 1, MPI_INT, MASTER_PROCESS_ID, MPI_COMM_WORLD);
@@ -723,7 +858,6 @@ int main(int argc, char **argv) {
         logMessage(message, rank);
     } else {
         avl = mergeOrderedLists(recv, size);
-        free(recv);
         struct BTreeNode *orderedByOccurrencesAVL = NULL;
         orderedByOccurrencesAVL = orderAVLByOccurrences(avl, orderedByOccurrencesAVL);
         free(avl);
