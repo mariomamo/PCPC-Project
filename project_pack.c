@@ -8,7 +8,7 @@
 #define MAX_FILE_NAME_LENGTH 255
 #define MAX_WORD_SIZE 1024
 #define FILE_NUMBER 1
-#define TASK_ARRAY_SIZE 4000000
+#define TASK_ARRAY_SIZE 400000
 #define MAX_HEAP_SIZE 4000
 #define TASK_ARRAY_SIZE_2 2
 #define MASTER_PROCESS_ID 0
@@ -372,7 +372,6 @@ void createItemMPIStruct(MPI_Datatype *itemType) {
 
 void scatterTasks(Task *taskArray, int taskArrayCurrentSize, MPI_Datatype subTaskType) {
     int taskIndex = 0;
-    int requestsIndex = 0;
     int position = 0;
     char message[PACK_SIZE];
     MPI_Request *requests = calloc(num_processes * 2, sizeof(MPI_Request));
@@ -382,12 +381,12 @@ void scatterTasks(Task *taskArray, int taskArrayCurrentSize, MPI_Datatype subTas
         position = 0;
         MPI_Pack(&task.size, 1, MPI_INT, message, PACK_SIZE, &position, MPI_COMM_WORLD);
         MPI_Pack(task.subTasks, task.size, subTaskType, message, PACK_SIZE, &position, MPI_COMM_WORLD);
-        MPI_Send(message, PACK_SIZE, MPI_PACKED, taskIndex + 1, TAG, MPI_COMM_WORLD);
+        MPI_Isend(message, PACK_SIZE, MPI_PACKED, taskIndex + 1, TAG, MPI_COMM_WORLD, &requests[taskIndex]);
     }
-    // MPI_Status status;
-    // for (taskIndex = 0; taskIndex < requestsIndex; taskIndex++) {
-    //     MPI_Wait(&requests[taskIndex], &status);
-    // }
+    MPI_Status status;
+    for (taskIndex = 0; taskIndex < taskArrayCurrentSize; taskIndex++) {
+        MPI_Wait(&requests[taskIndex], &status);
+    }
 }
 
 int getTreeHeight(struct BTreeNode *node) {

@@ -1,0 +1,9 @@
+files/610_parole_HP.txt
+files/1000_parole_italiane.txt
+files/6000_parole_italiane.txt
+files/280000_parole_italiane.txt
+files/test.txt
+files/altri/commedia.txt
+files/altri/bible.txt
+files/altri/03-The_Return_Of_The_King.txt
+files/altri/02-The_Two_Towers.txt

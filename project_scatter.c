@@ -9,12 +9,11 @@
 #define MAX_SUBTASKS_SIZE 5000
 #define MAX_WORD_SIZE 1024
 #define FILE_NUMBER 1
-#define TASK_ARRAY_SIZE 4000000
+#define TASK_ARRAY_SIZE 400000
 #define MAX_HEAP_SIZE 4000
 #define TASK_ARRAY_SIZE_2 2
 #define MASTER_PROCESS_ID 0
 #define TAG 100
-#define PACK_SIZE 1000000
 #define MAX(a,b) (((a)>(b))?(a):(b))
 
 int num_processes;
@@ -382,33 +381,6 @@ void createItemMPIStruct(MPI_Datatype *itemType) {
     MPI_Type_commit(itemType);
 }
 
-void scatterTasks(Task *taskArray, int taskArrayCurrentSize, MPI_Datatype subTaskType) {
-    int taskIndex = 0;
-    int requestsIndex = 0;
-    int position = 0;
-    char message[PACK_SIZE];
-    MPI_Request *requests = calloc(num_processes * 2, sizeof(MPI_Request));
-    for (taskIndex = 0; taskIndex < taskArrayCurrentSize; taskIndex++) {
-        Task task = taskArray[taskIndex];
-        long subTaskIndex = 0;
-        position = 0;
-        // MPI_Isend(&task.size, 1, MPI_INT, taskIndex + 1, TAG, MPI_COMM_WORLD, requests[taskIndex]);
-        // MPI_Send(&task.size, 1, MPI_INT, taskIndex + 1, TAG, MPI_COMM_WORLD);
-        // MPI_Send(task.subTasks, task.size, subTaskType, taskIndex + 1, TAG, MPI_COMM_WORLD);
-        // TODO: Qua potrei fare un pack
-        // MPI_Isend(&task.size, 1, MPI_INT, taskIndex + 1, TAG, MPI_COMM_WORLD, &requests[requestsIndex++]);
-        // MPI_Isend(task.subTasks, task.size, subTaskType, taskIndex + 1, TAG, MPI_COMM_WORLD, &requests[requestsIndex++]);
-        MPI_Pack(&task.size, 1, MPI_INT, message, PACK_SIZE, &position, MPI_COMM_WORLD);
-        MPI_Pack(task.subTasks, task.size, subTaskType, message, PACK_SIZE, &position, MPI_COMM_WORLD);
-        printf("POSITION: %d\n", position);
-        MPI_Send(message, PACK_SIZE, MPI_PACKED, taskIndex + 1, TAG, MPI_COMM_WORLD);
-    }
-    // MPI_Status status;
-    // for (taskIndex = 0; taskIndex < requestsIndex; taskIndex++) {
-    //     MPI_Wait(&requests[taskIndex], &status);
-    // }
-}
-
 int getTreeHeight(struct BTreeNode *node) {
     if (node == NULL) return 0;
     return node -> height;
@@ -692,7 +664,6 @@ int main(int argc, char **argv) {
         long *taskArrayCurrentSize = calloc(1, sizeof(long));
         long *arrayBytesPerProcess = getNumberOfElementsPerProcess(num_processes, totalBytes);
         printArray(arrayBytesPerProcess, 0, num_processes);
-        // taskArray[0] = *newTask();
         divideFilesBetweenProcesses(taskArray, taskArrayCurrentSize, arrayBytesPerProcess, filesInfos, FILE_NUMBER);
         printTaskArray(taskArray, *taskArrayCurrentSize);
 
@@ -708,10 +679,12 @@ int main(int argc, char **argv) {
         elementsPerProcess[i] = 1;
     }
     
-    MPI_Scatterv(taskArray, elementsPerProcess, displs, taskType, task, elementsPerProcess[rank], taskType, MASTER_PROCESS_ID, MPI_COMM_WORLD);
+    MPI_Request request;
+    MPI_Iscatterv(taskArray, elementsPerProcess, displs, taskType, task, elementsPerProcess[rank], taskType, MASTER_PROCESS_ID, MPI_COMM_WORLD, &request);
+    MPI_Wait(&request, MPI_STATUS_IGNORE);
 
     if (rank != MASTER_PROCESS_ID) {
-        char message[PACK_SIZE];
+        char message[100];
         int position = 0;
         int currentTask;
         for (currentTask = 0; currentTask < task -> size; currentTask++) {
@@ -734,9 +707,11 @@ int main(int argc, char **argv) {
     if (rank == MASTER_PROCESS_ID) {
         recv = initWordsListDisplsAndRecvCount(wordsListDispls, wordsListRecvCounts, wordsListSizes, &size);
     }
+    free(wordsListSizes);
     
     MPI_Gatherv(wordsList, size, itemType, recv, wordsListRecvCounts, wordsListDispls, itemType, MASTER_PROCESS_ID, MPI_COMM_WORLD);
     if (rank != MASTER_PROCESS_ID) {
+        free(recv);
         strcpy(message, "Data sended!\n");
         logMessage(message, rank);
     } else {

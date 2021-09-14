@@ -7,7 +7,6 @@
 #define MAX_FILE_LIST_SIZE 100
 #define MAX_FILE_NAME_LENGTH 255
 #define MAX_WORD_SIZE 1024
-#define FILE_NUMBER 1
 #define TASK_ARRAY_SIZE 400000
 #define MAX_HEAP_SIZE 4000
 #define TASK_ARRAY_SIZE_2 2
@@ -17,6 +16,7 @@
 
 int num_processes;
 char message[1024];
+int FILE_NUMBER;
 
 typedef struct {
     char fileName[MAX_FILE_NAME_LENGTH];
@@ -87,35 +87,38 @@ Item* newItemWithValues(char *word, int occurrences) {
 }
 
 int getFileSize(char *fileName) {
-    char subTask[MAX_FILE_NAME_LENGTH] = "";
-    strcat(subTask, fileName);
-    // strcat(subTask, ".txt");
-    FILE *fp = fopen(subTask, "r");
+    FILE *fp = fopen(fileName, "r");
     fseek(fp, 0L, SEEK_END);
-    return ftell(fp);
+    int size = ftell(fp);
+    fclose(fp);
+    return size;
+}
+
+int readFileNamesFromFile(char fileNames[MAX_FILE_LIST_SIZE][MAX_FILE_NAME_LENGTH]) {
+    FILE *input = fopen("input.txt", "r");
+    char *line;
+    size_t len = 0;
+    int read = 0;
+    int index = 0;
+    while((read = getline(&line, &len, input)) != -1) {
+        strcpy(fileNames[index], line);
+        if (fileNames[index][read - 1] == '\n' || fileNames[index][read - 1] == '\r') {
+            fileNames[index][read - 1] = '\0';
+        }
+        if (fileNames[index][read - 2] == '\n' || fileNames[index][read - 2] == '\r') {
+            fileNames[index][read - 2] = '\0';
+        }
+
+        index++;
+    }
+
+    fclose(input);
+    return index;
 }
 
 FileInfo* getFilesInfos() {
-    char *fileNames[MAX_FILE_NAME_LENGTH] = {
-        // "files/610_parole_HP.txt",
-        // "files/1000_parole_italiane.txt",
-        // "files/6000_parole_italiane.txt",
-        // "files/280000_parole_italiane.txt",
-        // "files/test.txt",
-        // "files/altri/commedia.txt",
-        // "files/altri/bible.txt",
-        // "files/altri/03-The_Return_Of_The_King.txt",
-        // "files/altri/02-The_Two_Towers.txt",
-        "files/412MB_words.txt"
-    };
-
-    // char *fileNames[MAX_FILE_NAME_LENGTH] = {
-        // "files/minicommedia.txt",
-    //     "files/test_count.txt",
-    //     "files/test.txt",
-    //     "files/test2.txt",
-    //     "files/test3.txt"
-    // };
+    char fileNames[MAX_FILE_LIST_SIZE][MAX_FILE_NAME_LENGTH] = {""};
+    FILE_NUMBER = readFileNamesFromFile(fileNames);
 
     FileInfo *filesInfos = malloc(FILE_NUMBER * sizeof(FileInfo));
     int i = 0;
@@ -369,22 +372,6 @@ void createItemMPIStruct(MPI_Datatype *itemType) {
     MPI_Type_commit(itemType);
 }
 
-// void scatterTasks(Task *taskArray, int taskArrayCurrentSize, MPI_Datatype subTaskType) {
-//     int taskIndex = 0;
-//     MPI_Request req;
-//     for (taskIndex = 0; taskIndex < taskArrayCurrentSize; taskIndex++) {
-//         Task task = taskArray[taskIndex];
-//         long subTaskIndex = 0;
-//         // MPI_Isend(&task.size, 1, MPI_INT, taskIndex + 1, TAG, MPI_COMM_WORLD, &req);
-//         MPI_Send(&task.size, 1, MPI_INT, taskIndex + 1, TAG, MPI_COMM_WORLD);
-//         for (subTaskIndex = 0; subTaskIndex < task.size; subTaskIndex++) {
-//             SubTask subTask = task.subTasks[subTaskIndex];
-//             // MPI_Isend(&subTask, 1, subTaskType, taskIndex + 1, TAG, MPI_COMM_WORLD, &req);
-//             MPI_Send(&subTask, 1, subTaskType, taskIndex + 1, TAG, MPI_COMM_WORLD);
-//         }
-//     }
-// }
-
 void scatterTasks(Task *taskArray, int taskArrayCurrentSize, MPI_Datatype subTaskType) {
     int taskIndex = 0;
     int requestsIndex = 0;
@@ -392,10 +379,6 @@ void scatterTasks(Task *taskArray, int taskArrayCurrentSize, MPI_Datatype subTas
     for (taskIndex = 0; taskIndex < taskArrayCurrentSize; taskIndex++) {
         Task task = taskArray[taskIndex];
         long subTaskIndex = 0;
-        // MPI_Isend(&task.size, 1, MPI_INT, taskIndex + 1, TAG, MPI_COMM_WORLD, requests[taskIndex]);
-        // MPI_Send(&task.size, 1, MPI_INT, taskIndex + 1, TAG, MPI_COMM_WORLD);
-        // MPI_Send(task.subTasks, task.size, subTaskType, taskIndex + 1, TAG, MPI_COMM_WORLD);
-        // TODO: Qua potrei fare un pack
         MPI_Isend(&task.size, 1, MPI_INT, taskIndex + 1, TAG, MPI_COMM_WORLD, &requests[requestsIndex++]);
         MPI_Isend(task.subTasks, task.size, subTaskType, taskIndex + 1, TAG, MPI_COMM_WORLD, &requests[requestsIndex++]);
     }
