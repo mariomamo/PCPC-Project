@@ -91,6 +91,7 @@ int getFileSize(char *fileName) {
     fseek(fp, 0L, SEEK_END);
     int size = ftell(fp);
     fclose(fp);
+    free(fp);
     return size;
 }
 
@@ -113,6 +114,7 @@ int readFileNamesFromFile(char fileNames[MAX_FILE_LIST_SIZE][MAX_FILE_NAME_LENGT
     }
 
     fclose(input);
+    free(input);
     return index;
 }
 
@@ -253,7 +255,7 @@ SubTask* newSubTask(char *fileName, int startFromBytes, int endToBytes) {
 
 int addTask(Task *taskArray, long taskArrayCurrentSize, Task *task) {
     // TODO: CONTROLLARE SE FUNZIONA
-    SubTask *temp = task -> subTasks;
+    // SubTask *temp = task -> subTasks;
     task -> subTasks = realloc(task -> subTasks, task -> size * sizeof(SubTask));
     taskArray[taskArrayCurrentSize] = *task;
     task -> subTasks = calloc(TASK_ARRAY_SIZE_2, sizeof(SubTask));
@@ -386,6 +388,7 @@ void scatterTasks(Task *taskArray, int taskArrayCurrentSize, MPI_Datatype subTas
     for (taskIndex = 0; taskIndex < requestsIndex; taskIndex++) {
         MPI_Wait(&requests[taskIndex], &status);
     }
+    free(requests);
 }
 
 int getTreeHeight(struct BTreeNode *node) {
@@ -566,6 +569,7 @@ struct BTreeNode* countWords(SubTask *subTask, int rank) {
         btree = addToAVL(btree, *newItemWithValues(line, 1), compareByName);
     }
     fclose(file);
+    free(file);
     return btree;
 }
 
@@ -602,6 +606,7 @@ void createCSV(struct BTreeNode *wordsTree, long size, int rank) {
     writeTree(wordsTree, output);
 
     fclose(output);
+    free(output);
 }
 
 Item* initWordsListDisplsAndRecvCount(int *wordsListDispls, int *wordsListRecvCounts, int *wordsListSizes, long *size) {
@@ -637,7 +642,6 @@ int main(int argc, char **argv) {
 
     SubTask subTask;
     Item *receivedData = malloc(sizeof(Item) * TASK_ARRAY_SIZE * num_processes);
-    // Item wordsList[TASK_ARRAY_SIZE];
     Item *wordsList = calloc(TASK_ARRAY_SIZE, sizeof(Item));
     struct BTreeNode *avl;
     long size = TASK_ARRAY_SIZE;

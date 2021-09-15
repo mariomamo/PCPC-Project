@@ -1,5 +1,5 @@
 CC=mpicc
-MAIN=project_trad
+MAIN=project_scatter
 OUT=progetto
 EXT=.o
 PROCESSES=3
