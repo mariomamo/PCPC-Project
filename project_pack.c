@@ -92,7 +92,7 @@ int getFileSize(char *fileName) {
     fseek(fp, 0L, SEEK_END);
     int size = ftell(fp);
     fclose(fp);
-    free(fp);
+    // free(fp);
     return size;
 }
 
@@ -115,7 +115,7 @@ int readFileNamesFromFile(char fileNames[MAX_FILE_LIST_SIZE][MAX_FILE_NAME_LENGT
     }
 
     fclose(input);
-    free(input);
+    // free(input);
     return index;
 }
 
@@ -573,7 +573,7 @@ struct BTreeNode* countWords(SubTask *subTask, int rank) {
         btree = addToAVL(btree, *newItemWithValues(line, 1), compareByName);
     }
     fclose(file);
-    free(file);
+    // free(file);
     return btree;
 }
 
@@ -588,29 +588,30 @@ void swapItems(Item *item1, Item *item2) {
     strcpy(item2 -> word, temp -> word);
     item2 -> occurrences = temp -> occurrences;
 
-    // free(temp);
+    free(temp);
 }
 
-void writeTree(struct BTreeNode *wordsTree, FILE *outputFile) {
+void writeTree(struct BTreeNode *wordsTree, FILE *outputFile, long *wordsNumber) {
     if (wordsTree != NULL) {
-        writeTree(wordsTree -> left, outputFile);
+        writeTree(wordsTree -> left, outputFile, wordsNumber);
+        (*wordsNumber)++;
         fprintf(outputFile, "%s,%ld\n", wordsTree -> word, wordsTree -> occurrences);
-        writeTree(wordsTree -> right, outputFile);
+        writeTree(wordsTree -> right, outputFile, wordsNumber);
     }
 }
 
-void createCSV(struct BTreeNode *wordsTree, long size, int rank) {
+void createCSV(struct BTreeNode *wordsTree, long size, int rank, long *wordsNumber) {
     if (size < 0) return;
 
     char fileName[MAX_FILE_NAME_LENGTH];
-    sprintf(fileName, "files/output_%d.txt", rank);
+    sprintf(fileName, "files/output.txt");
     FILE *output = fopen(fileName, "w");
     fprintf(output, "WORD,COUNT\n");
 
-    writeTree(wordsTree, output);
+    writeTree(wordsTree, output, wordsNumber);
 
     fclose(output);
-    free(output);
+    // free(output);
 }
 
 Item* initWordsListDisplsAndRecvCount(int *wordsListDispls, int *wordsListRecvCounts, int *wordsListSizes, long *size) {
@@ -636,6 +637,34 @@ struct BTreeNode* mergeOrderedLists(Item *receivedWordsList, int size) {
     }
 
     return avl;
+}
+
+void processTasks(Task *task, SubTask *subTask, struct BTreeNode *avl, Item *wordsList, long *size, int *rank) {
+    int currentTask;
+    for (currentTask = 0; currentTask < task -> size; currentTask++) {
+        *subTask = task -> subTasks[currentTask];
+        strcpy(message, "Counting words...\n");
+        logMessage(message, *rank);
+        avl = countWords(subTask, *rank);
+        strcpy(message, "Word counted! Sending data to master process...\n");
+        logMessage(message, *rank);
+        *size = createArrayFromAVL(wordsList, avl, 0);
+    }
+}
+
+int mergeData(struct BTreeNode *avl, long *size, double *startTime, int *rank) {
+    struct BTreeNode *orderedByOccurrencesAVL = NULL;
+    orderedByOccurrencesAVL = orderAVLByOccurrences(avl, orderedByOccurrencesAVL);
+    free(avl);
+    // inOrder(orderedByOccurrencesAVL, MASTER_PROCESS_ID);
+    strcpy(message, "Creating CSV...\n");
+    logMessage(message, *rank);
+    long wordsNumber = 0;
+    createCSV(orderedByOccurrencesAVL, *size, *rank, &wordsNumber);
+    free(orderedByOccurrencesAVL);
+    strcpy(message, "CSV created!\n");
+    logMessage(message, *rank);
+    return wordsNumber;
 }
 
 int main(int argc, char **argv) {
@@ -679,9 +708,7 @@ int main(int argc, char **argv) {
         printTaskArray(taskArray, *taskArrayCurrentSize);
 
         startTime = MPI_Wtime();
-
         scatterTasks(taskArray, *taskArrayCurrentSize, subTaskType);
-        
     } else {
         char message[PACK_SIZE];
         Task *task = newTask();
@@ -690,16 +717,8 @@ int main(int argc, char **argv) {
         MPI_Unpack(message, PACK_SIZE, &position, &task -> size, 1, MPI_INT, MPI_COMM_WORLD);
         task -> subTasks = calloc(task -> size, sizeof(SubTask));
         MPI_Unpack(message, PACK_SIZE, &position, task -> subTasks, task -> size, subTaskType, MPI_COMM_WORLD);
-        int currentTask;
-        for (currentTask = 0; currentTask < task -> size; currentTask++) {
-            subTask = task -> subTasks[currentTask];
-            strcpy(message, "Counting words...\n");
-            logMessage(message, rank);
-            avl = countWords(&subTask, rank);
-            strcpy(message, "Word counted! Sending data to master process...\n");
-            logMessage(message, rank);
-            size = createArrayFromAVL(wordsList, avl, 0);
-        }
+        processTasks(task, &subTask, avl, wordsList, &size, &rank);
+        MPI_Type_free(&subTaskType);
     }
 
     int *wordsListSizes = calloc(num_processes + 1, sizeof(int));
@@ -719,19 +738,10 @@ int main(int argc, char **argv) {
     } else {
         avl = mergeOrderedLists(recv, size);
         free(recv);
-        struct BTreeNode *orderedByOccurrencesAVL = NULL;
-        orderedByOccurrencesAVL = orderAVLByOccurrences(avl, orderedByOccurrencesAVL);
-        free(avl);
-        // inOrder(orderedByOccurrencesAVL, MASTER_PROCESS_ID);
-        strcpy(message, "Creating CSV...\n");
-        logMessage(message, rank);
-        createCSV(orderedByOccurrencesAVL, size, rank);
-        free(orderedByOccurrencesAVL);
+        long wordsNumber = mergeData(avl, &size, &startTime, &rank);
         double endTime = MPI_Wtime();
-        strcpy(message, "CSV created!\n");
-        logMessage(message, rank);
         double totalTime = endTime - startTime;
-        sprintf(message, "Execution time: %f\n", totalTime);
+        sprintf(message, "Processed %ld words in %f seconds\n", wordsNumber, totalTime);
         logMessage(message, rank);
     }
 
