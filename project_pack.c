@@ -9,7 +9,7 @@
 #define MAX_WORD_SIZE 1024
 #define TASK_ARRAY_SIZE 400000
 #define MAX_HEAP_SIZE 4000
-#define TASK_ARRAY_SIZE_2 2
+#define TASK_ARRAY_SIZE_2 400000
 #define MASTER_PROCESS_ID 0
 #define TAG 100
 #define PACK_SIZE 1000000
@@ -121,6 +121,7 @@ int readFileNamesFromFile(char fileNames[MAX_FILE_LIST_SIZE][MAX_FILE_NAME_LENGT
 
 FileInfo* getFilesInfos() {
     char fileNames[MAX_FILE_LIST_SIZE][MAX_FILE_NAME_LENGTH] = {""};
+    // char *fileNames = calloc(MAX_FILE_LIST_SIZE * MAX_FILE_LIST_SIZE, sizeof(char));
     FILE_NUMBER = readFileNamesFromFile(fileNames);
 
     FileInfo *filesInfos = malloc(FILE_NUMBER * sizeof(FileInfo));
@@ -131,6 +132,8 @@ FileInfo* getFilesInfos() {
         f.fileSize = getFileSize(fileNames[i]);
         filesInfos[i] = f;
     }
+
+    // free(fileNames);
 
     char message[2014];
 
@@ -227,18 +230,6 @@ int getSendedBytes(int endToBytes, int startFromBytes) {
     return endToBytes - startFromBytes;
 }
 
-long addSubTask(Task *task, long subTaskArrayMaximumSize, SubTask newSubTask) {
-    SubTask *tempArray = task -> subTasks;
-    if (subTaskArrayMaximumSize <= task -> size) {
-        subTaskArrayMaximumSize += TASK_ARRAY_SIZE_2;
-        tempArray = realloc(tempArray, subTaskArrayMaximumSize * sizeof(SubTask));
-    }
-    tempArray[task -> size] = newSubTask;
-    task -> subTasks = tempArray;
-    task -> size++;
-    return subTaskArrayMaximumSize;
-}
-
 Task* newTask() {
     Task *task = malloc(1 * sizeof(Task));
     task -> subTasks = malloc(TASK_ARRAY_SIZE_2 * sizeof(SubTask));
@@ -254,17 +245,33 @@ SubTask* newSubTask(char *fileName, int startFromBytes, int endToBytes) {
     return subTask;
 }
 
-int addTask(Task *taskArray, long taskArrayCurrentSize, Task *task) {
-    // TODO: CONTROLLARE SE FUNZIONA
-    // SubTask *temp = task -> subTasks;
+long addSubTask(Task *task, long subTaskArrayMaximumSize, SubTask newSubTask) {
+    SubTask *tempArray = task -> subTasks;
+    if (subTaskArrayMaximumSize <= task -> size) {
+        subTaskArrayMaximumSize += TASK_ARRAY_SIZE_2;
+        tempArray = realloc(tempArray, subTaskArrayMaximumSize * sizeof(SubTask));
+    }
+    tempArray[task -> size] = newSubTask;
+    task -> subTasks = tempArray;
+    task -> size++;
+    return subTaskArrayMaximumSize;
+}
+
+int addTask(Task **taskArray, long *taskArrayMaximumSize, long taskArrayCurrentSize, Task *task) {
     task -> subTasks = realloc(task -> subTasks, task -> size * sizeof(SubTask));
-    taskArray[taskArrayCurrentSize] = *task;
+    if (*taskArrayMaximumSize <= taskArrayCurrentSize) {
+        *taskArrayMaximumSize += TASK_ARRAY_SIZE_2;
+        *taskArray = realloc(*taskArray, *taskArrayMaximumSize * sizeof(Task));
+    }
+    (*taskArray)[taskArrayCurrentSize] = *task;
     task -> subTasks = calloc(TASK_ARRAY_SIZE_2, sizeof(SubTask));
     task -> size = 0;
     return taskArrayCurrentSize + 1;
 }
 
-Task *divideFilesBetweenProcesses(Task *taskArray, long *taskArrayCurrentSize, long *arrayBytesPerProcess, FileInfo *filesInfos, int numFiles) {
+Task *divideFilesBetweenProcesses(long taskArraySize, long *taskArrayCurrentSize, long *arrayBytesPerProcess, FileInfo *filesInfos, int numFiles) {
+    long taskArrayMaximumSize = TASK_ARRAY_SIZE_2;
+    Task *taskArray = calloc(taskArrayMaximumSize, sizeof(Task));
     *taskArrayCurrentSize = 0;
     long remainingBytesToRead = arrayBytesPerProcess[0];
     int currentFileInfo = 0;
@@ -292,7 +299,7 @@ Task *divideFilesBetweenProcesses(Task *taskArray, long *taskArrayCurrentSize, l
             if (remainingBytesToRead == 0) {
                 remainingBytesToRead = arrayBytesPerProcess[currentProcess];
                 currentProcess++;
-                *taskArrayCurrentSize = addTask(taskArray, *taskArrayCurrentSize, task);
+                *taskArrayCurrentSize = addTask(&taskArray, &taskArrayMaximumSize, *taskArrayCurrentSize, task);
                 subTaskArrayMaximumSize = 0;
             }
 
@@ -312,7 +319,7 @@ Task *divideFilesBetweenProcesses(Task *taskArray, long *taskArrayCurrentSize, l
             }
 
             if (remainingBytesToRead == 0) {
-                *taskArrayCurrentSize = addTask(taskArray, *taskArrayCurrentSize, task);
+                *taskArrayCurrentSize = addTask(&taskArray, &taskArrayMaximumSize, *taskArrayCurrentSize, task);
                 subTaskArrayMaximumSize = 0;
             }
 
@@ -379,6 +386,7 @@ void scatterTasks(Task *taskArray, int taskArrayCurrentSize, MPI_Datatype subTas
     int taskIndex = 0;
     int position = 0;
     char message[PACK_SIZE];
+    // Puoi togliere il * 2
     MPI_Request *requests = calloc(num_processes * 2, sizeof(MPI_Request));
     for (taskIndex = 0; taskIndex < taskArrayCurrentSize; taskIndex++) {
         Task task = taskArray[taskIndex];
@@ -501,11 +509,15 @@ struct BTreeNode* orderAVLByOccurrences(struct BTreeNode *oldTree, struct BTreeN
     return newTree;
 }
 
-long createArrayFromAVL(Item *wordsList, struct BTreeNode *rootNode, long index) {
+long createArrayFromAVL(Item **wordsList, long *wordsListSize, struct BTreeNode *rootNode, long index) {
     if (rootNode != NULL) {
-        index = createArrayFromAVL(wordsList, rootNode -> left, index);
-        wordsList[index++] = *newItemWithValues(rootNode -> word, rootNode -> occurrences);
-        return createArrayFromAVL(wordsList, rootNode -> right, index);
+        index = createArrayFromAVL(wordsList, wordsListSize, rootNode -> left, index);
+        if (*wordsListSize <= index) {
+            *wordsListSize += TASK_ARRAY_SIZE_2;
+            *wordsList = realloc(*wordsList, *wordsListSize * sizeof(Item));
+        }
+        (*wordsList)[index++] = *newItemWithValues(rootNode -> word, rootNode -> occurrences);
+        return createArrayFromAVL(wordsList, wordsListSize, rootNode -> right, index);
     }
     return index;
 }
@@ -543,7 +555,9 @@ struct BTreeNode* countWords(SubTask *subTask, int rank) {
         fseek(file, start-1, SEEK_SET);
         c = fgetc(file);
         if (c != EOF && c != '\n' && c != ' ') {
+            // printf("Scarto: %c\n", c);
             while (remainingBytesToRead > 0 && (c = fgetc(file)) != EOF && c != '\n' && c != ' ') {
+                // printf("Scarto: %c\n", c);
                 remainingBytesToRead--;
                 chread++;
             }
@@ -560,6 +574,7 @@ struct BTreeNode* countWords(SubTask *subTask, int rank) {
         }
         if (remainingBytesToRead <= 0) break;
         while (c != EOF && c != ' ' && c != '\r' && c != '\n' && isCharacter(c)) {
+            // printf(">>> READ: %c\n", c);
             line[readedBytes++] = c;
             c = fgetc(file);
         }
@@ -604,7 +619,7 @@ void createCSV(struct BTreeNode *wordsTree, long size, int rank, long *wordsNumb
     if (size < 0) return;
 
     char fileName[MAX_FILE_NAME_LENGTH];
-    sprintf(fileName, "files/output.txt");
+    sprintf(fileName, "files/output.csv");
     FILE *output = fopen(fileName, "w");
     fprintf(output, "WORD,COUNT\n");
 
@@ -629,9 +644,8 @@ Item* initWordsListDisplsAndRecvCount(int *wordsListDispls, int *wordsListRecvCo
     return recv;
 }
 
-struct BTreeNode* mergeOrderedLists(Item *receivedWordsList, int size) {
+struct BTreeNode* mergeOrderedLists(struct BTreeNode *avl, Item *receivedWordsList, int size) {
     int i;
-    struct BTreeNode *avl;
     for (i = 0; i < size; i++) {
         avl = addToAVL(avl, receivedWordsList[i], compareByName);
     }
@@ -639,20 +653,18 @@ struct BTreeNode* mergeOrderedLists(Item *receivedWordsList, int size) {
     return avl;
 }
 
-void processTasks(Task *task, SubTask *subTask, struct BTreeNode *avl, Item *wordsList, long *size, int *rank) {
+void processTasks(Task *task, SubTask *subTask, struct BTreeNode *avl, Item **wordsList, long *wordsListSize, long *size, int *rank) {
     int currentTask;
     for (currentTask = 0; currentTask < task -> size; currentTask++) {
         *subTask = task -> subTasks[currentTask];
         strcpy(message, "Counting words...\n");
         logMessage(message, *rank);
         avl = countWords(subTask, *rank);
-        strcpy(message, "Word counted! Sending data to master process...\n");
-        logMessage(message, *rank);
-        *size = createArrayFromAVL(wordsList, avl, 0);
+        *size = createArrayFromAVL(wordsList, wordsListSize, avl, 0);
     }
 }
 
-int mergeData(struct BTreeNode *avl, long *size, double *startTime, int *rank) {
+int mergeData(struct BTreeNode *avl, long *size, int *rank) {
     struct BTreeNode *orderedByOccurrencesAVL = NULL;
     orderedByOccurrencesAVL = orderAVLByOccurrences(avl, orderedByOccurrencesAVL);
     free(avl);
@@ -674,8 +686,6 @@ int main(int argc, char **argv) {
     MPI_Status status;
 
     SubTask subTask;
-    Item *receivedData = malloc(sizeof(Item) * TASK_ARRAY_SIZE * num_processes);
-    Item *wordsList = calloc(TASK_ARRAY_SIZE, sizeof(Item));
     struct BTreeNode *avl;
     long size = TASK_ARRAY_SIZE;
     double startTime;
@@ -695,54 +705,91 @@ int main(int argc, char **argv) {
     createSubTaskMPIStruct(&subTaskType);
     createItemMPIStruct(&itemType);
 
-    Item *recv;
-
     if (rank == MASTER_PROCESS_ID) {
         FileInfo *filesInfos = getFilesInfos();
         int totalBytes = getTotalBytesFromFiles(filesInfos, FILE_NUMBER);
-        Task *taskArray = calloc(TASK_ARRAY_SIZE, sizeof(Task));
+        Task *taskArray = calloc(TASK_ARRAY_SIZE_2, sizeof(Task));
         long *taskArrayCurrentSize = malloc(1 * sizeof(long));
         long *arrayBytesPerProcess = getNumberOfElementsPerProcess(num_processes, totalBytes);
         printArray(arrayBytesPerProcess, 0, num_processes);
-        divideFilesBetweenProcesses(taskArray, taskArrayCurrentSize, arrayBytesPerProcess, filesInfos, FILE_NUMBER);
+        taskArray = divideFilesBetweenProcesses(TASK_ARRAY_SIZE_2, taskArrayCurrentSize, arrayBytesPerProcess, filesInfos, FILE_NUMBER);
         printTaskArray(taskArray, *taskArrayCurrentSize);
 
         startTime = MPI_Wtime();
         scatterTasks(taskArray, *taskArrayCurrentSize, subTaskType);
-    } else {
-        char message[PACK_SIZE];
-        Task *task = newTask();
-        int position = 0;
-        MPI_Recv(message, PACK_SIZE, MPI_PACKED, MASTER_PROCESS_ID, TAG, MPI_COMM_WORLD, &status);
-        MPI_Unpack(message, PACK_SIZE, &position, &task -> size, 1, MPI_INT, MPI_COMM_WORLD);
-        task -> subTasks = calloc(task -> size, sizeof(SubTask));
-        MPI_Unpack(message, PACK_SIZE, &position, task -> subTasks, task -> size, subTaskType, MPI_COMM_WORLD);
-        processTasks(task, &subTask, avl, wordsList, &size, &rank);
+
+        free(filesInfos);
+        free(taskArray);
+        free(taskArrayCurrentSize);
+        free(arrayBytesPerProcess);
         MPI_Type_free(&subTaskType);
-    }
 
-    int *wordsListSizes = calloc(num_processes + 1, sizeof(int));
-    MPI_Gather(&size, 1, MPI_INT, &wordsListSizes[rank], 1, MPI_INT, MASTER_PROCESS_ID, MPI_COMM_WORLD);
+        char *packMessage = calloc(PACK_SIZE, sizeof(char));
 
-    int wordsListRecvCounts[num_processes];
-    
-    int wordsListDispls[num_processes];
-    if (rank == MASTER_PROCESS_ID) {
-        recv = initWordsListDisplsAndRecvCount(wordsListDispls, wordsListRecvCounts, wordsListSizes, &size);
-    }
-    
-    MPI_Gatherv(wordsList, size, itemType, recv, wordsListRecvCounts, wordsListDispls, itemType, MASTER_PROCESS_ID, MPI_COMM_WORLD);
-    if (rank != MASTER_PROCESS_ID) {
-        strcpy(message, "Data sended!\n");
-        logMessage(message, rank);
-    } else {
-        avl = mergeOrderedLists(recv, size);
-        free(recv);
-        long wordsNumber = mergeData(avl, &size, &startTime, &rank);
+        int taskIndex;
+        MPI_Request *requests = calloc(num_processes, sizeof(MPI_Request));
+        MPI_Status sizeStatus, st, wordsListStatus;
+        long wordsSize[num_processes];
+        Item **wordsList = calloc(num_processes, sizeof(Item));
+
+        for (taskIndex = 0; taskIndex < num_processes; taskIndex++) {
+            MPI_Recv(&wordsSize[taskIndex], 1, MPI_LONG, taskIndex + 1, TAG, MPI_COMM_WORLD, &sizeStatus);
+            wordsList[taskIndex] = calloc(wordsSize[taskIndex], sizeof(Item));
+            MPI_Irecv(wordsList[taskIndex], wordsSize[taskIndex], itemType, taskIndex + 1, TAG, MPI_COMM_WORLD,  &requests[taskIndex]);
+        }
+        for (taskIndex = 0; taskIndex < num_processes; taskIndex++) {
+            MPI_Wait(&requests[taskIndex], &wordsListStatus);
+            int position = 0;
+            int i;
+            for (i = 0; i < wordsSize[taskIndex]; i++) {
+                avl = addToAVL(avl, wordsList[taskIndex][i], compareByName);
+            }
+            free(wordsList[taskIndex]);
+        }
+
+        free(requests);
+        free(wordsList);
+        MPI_Type_free(&itemType);
+
+        long wordsNumber = mergeData(avl, &size, &rank);
         double endTime = MPI_Wtime();
         double totalTime = endTime - startTime;
         sprintf(message, "Processed %ld words in %f seconds\n", wordsNumber, totalTime);
         logMessage(message, rank);
+     } else {
+        long wordsListSize = TASK_ARRAY_SIZE_2;
+        Item *wordsList = calloc(wordsListSize, sizeof(Item));
+        Task *task = newTask();
+        int position = 0;
+        char *packMessage = calloc(PACK_SIZE, sizeof(char));
+        MPI_Recv(packMessage, PACK_SIZE, MPI_PACKED, MASTER_PROCESS_ID, TAG, MPI_COMM_WORLD, &status);
+        MPI_Unpack(packMessage, PACK_SIZE, &position, &task -> size, 1, MPI_INT, MPI_COMM_WORLD);
+        task -> subTasks = calloc(task -> size, sizeof(SubTask));
+        MPI_Unpack(packMessage, PACK_SIZE, &position, task -> subTasks, task -> size, subTaskType, MPI_COMM_WORLD);
+        processTasks(task, &subTask, avl, &wordsList, &wordsListSize, &size, &rank);
+
+        free(task);
+        free(packMessage);
+        MPI_Type_free(&subTaskType);
+
+        strcpy(message, "Word counted! Sending data to master process...\n");
+        logMessage(message, rank);
+
+        packMessage = calloc(PACK_SIZE, sizeof(char));
+        position = 0;
+        MPI_Request sizeRequest, wordsRequest;
+        MPI_Status status;
+        MPI_Isend(&size, 1, MPI_LONG, MASTER_PROCESS_ID, TAG, MPI_COMM_WORLD, &sizeRequest);
+        MPI_Isend(wordsList, size, itemType, MASTER_PROCESS_ID, TAG, MPI_COMM_WORLD, &wordsRequest);
+        free(packMessage);
+        MPI_Type_free(&itemType);
+
+        MPI_Wait(&sizeRequest, &status);
+        MPI_Wait(&wordsRequest, &status);
+        strcpy(message, "Data sended!\n");
+        logMessage(message, rank);
+
+        free(wordsList);
     }
 
     MPI_Finalize();

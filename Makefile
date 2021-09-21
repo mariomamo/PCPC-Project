@@ -1,8 +1,8 @@
 CC=mpicc
-MAIN=project_scatter
+MAIN=project_pack
 OUT=progetto
 EXT=.o
-PROCESSES=4
+PROCESSES=2
 
 main.o: clean $(MAIN)$(EXT)
 	$(CC) $(MAIN)$(EXT) -o $(OUT)$(EXT)

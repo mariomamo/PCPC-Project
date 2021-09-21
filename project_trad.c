@@ -600,7 +600,7 @@ void createCSV(struct BTreeNode *wordsTree, long size, int rank, long *wordsNumb
     if (size < 0) return;
 
     char fileName[MAX_FILE_NAME_LENGTH];
-    sprintf(fileName, "files/output.txt");
+    sprintf(fileName, "files/output.csv");
     FILE *output = fopen(fileName, "w");
     fprintf(output, "WORD,COUNT\n");
 
@@ -730,6 +730,7 @@ int main(int argc, char **argv) {
         strcpy(message, "Data sended!\n");
         logMessage(message, rank);
     } else {
+        // free(wordsList);
         avl = mergeOrderedLists(recv, size);
         free(recv);
         long wordsNumber = mergeData(avl, &size, &startTime, &rank);
