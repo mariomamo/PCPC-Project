@@ -1,0 +1,11 @@
+# Client 1
+172.31.25.87 slots=2
+
+# Client 2
+172.31.21.23 slots=2
+
+# Client 3
+172.31.20.23 slots=2
+
+# Client 4
+172.31.25.5 slots=2
