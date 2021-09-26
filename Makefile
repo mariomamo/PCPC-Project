@@ -1,5 +1,5 @@
 CC=mpicc
-MAIN=project_pack
+MAIN=word_count_pack
 OUT=progetto
 EXT=.o
 PROCESSES=2

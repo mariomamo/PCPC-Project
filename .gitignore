@@ -25,3 +25,13 @@ hs_err_pid*
 .vscode/
 .idea/
 *.o
+
+files/100 mega file.txt
+files/200 mega file.txt
+files/300 mega file.txt
+files/400 mega file.txt
+files/500 mega file.txt
+input_roberto.txt
+*.csv
+Rilevazioni_segreto.xlsx
+progetto/

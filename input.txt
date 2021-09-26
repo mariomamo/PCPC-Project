@@ -1,1 +1,17 @@
-files/altri/01-The_Fellowship_Of_The_Ring.txt
+files/01-The_Fellowship_Of_The_Ring.txt
+files/02-The_Two_Towers.txt
+files/03-The_Return_Of_The_King.txt
+files/bible.txt
+files/Book 1 - The Philosopher's Stone.txt
+files/Book 2 - The Chamber of Secrets.txt
+files/Book 3 - The Prisoner of Azkaban.txt
+files/Book 4 - The Goblet of Fire.txt
+files/Book 5 - The Order of the Phoenix.txt
+files/Book 6 - The Half Blood Prince.txt
+files/Book 7 - The Deathly Hallows.txt
+files/divina commedia.txt
+files/610_parole_HP.txt
+files/1000_parole_italiane.txt
+files/6000_parole_italiane.txt
+files/280000_parole_italiane.txt
+files/all hp books.txt

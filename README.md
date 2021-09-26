@@ -305,13 +305,12 @@ Task *divideFilesBetweenProcesses(long taskArraySize, long *taskArrayCurrentSize
 
 Il risultato prodotto sarà il seguente
 
-
 ```shell
 [Processo 0] >> >>>>>> process[0]: files/altri/01-The_Fellowship_Of_The_Ring.txt, 0, 1025381
 [Processo 0] >> >>>>>> process[0]: files/altri/02-The_Two_Towers.txt, 0, 838055
 [Processo 0] >> >>>>>> process[0]: files/altri/03-The_Return_Of_The_King.txt, 0, 726683
 [Processo 0] >> >>>>>> process[0]: files/altri/bible.txt, 0, 4433688
-[Processo 0] >> >>>>>> process[0]: files/altri/Book 1 - The Philosopher's Stone.txt, 0, 474352
+[Processo 0] >> >>>>>> process[0]: files/altri/Book 1 - The Philosopher s Stone.txt, 0, 474352
 [Processo 0] >> >>>>>> process[0]: files/altri/Book 2 - The Chamber of Secrets.txt, 0, 531211
 [Processo 0] >> >>>>>> process[0]: files/altri/Book 3 - The Prisoner of Azkaban.txt, 0, 396784
 [Processo 0] >> >>>>>> process[1]: files/altri/Book 3 - The Prisoner of Azkaban.txt, 396785, 676411
@@ -394,9 +393,8 @@ struct BTreeNode {
 Item è una struttura che viene utilizzata per wrappare le informazioni sulla parola e sul numero di occorrenze, mentre BTreeNode rappresenta un nodo dell'albero.
 
 ```c
-struct BTreeNode* countWords(SubTask *subTask, int rank) {
+struct BTreeNode* countWords(struct BTreeNode *btree, SubTask *subTask, int rank) {
     rank = rank - 1;
-    struct BTreeNode *btree = NULL;
     FILE *file = fopen(subTask -> fileName, "r");
     long start = subTask -> startFromBytes;
     int remainingBytesToRead = subTask -> endToBytes + 1 - subTask -> startFromBytes;
@@ -407,8 +405,8 @@ struct BTreeNode* countWords(SubTask *subTask, int rank) {
     if (start != 0) {
         fseek(file, start-1, SEEK_SET);
         c = fgetc(file);
-        if (c != EOF && c != '\n' && c != ' ') {
-            while (remainingBytesToRead > 0 && (c = fgetc(file)) != EOF && c != '\n' && c != ' ') {
+        if (isCharacter(c)) {
+            while (remainingBytesToRead > 0 && (c = fgetc(file)) != EOF && c != '\n' && c != ' ' && isCharacter(c)) {
                 remainingBytesToRead--;
                 chread++;
             }
@@ -468,6 +466,7 @@ free(wordsList);
 ```
 
 ## Ordinamento parole da parte del master
+Il master riceve delle liste di Item da parte di client e deve necessariamente unirle per poter ordinare i dati.
 
 ```c
 int mergeData(struct BTreeNode *avl, long *size, int *rank) {
@@ -516,6 +515,8 @@ struct BTreeNode* addToAVL(struct BTreeNode *btree, Item item, int (*compareFunc
     ...
 }
 ```
+
+:information_source: In un primo momento era stato utilizzato un semplice BTree che però dava problemi nel caso in cui l'input fosse già ordinato (caso peggiore) riducendo di fatto le performance a quelle di una lista (l'albero si sviluppava solo a sinistra o solo a destra). L'AVL risolve questo problema eseguendo una rotazione dei nodi nel momento in cui gli elementi si sviluppano solamente verso sinistra o solamente verso destra.
 
 ## Creazione CSV
 La funzione createCSV si occupa di produrre il CSV di output.
@@ -586,24 +587,10 @@ int main(int argc, char **argv) {
 
         int taskIndex;
         MPI_Request *requests = calloc(num_processes, sizeof(MPI_Request));
-        MPI_Status sizeStatus, st, wordsListStatus;
         long wordsSize[num_processes];
         Item **wordsList = calloc(num_processes, sizeof(Item));
 
-        for (taskIndex = 0; taskIndex < num_processes; taskIndex++) {
-            MPI_Recv(&wordsSize[taskIndex], 1, MPI_LONG, taskIndex + 1, TAG, MPI_COMM_WORLD, &sizeStatus);
-            wordsList[taskIndex] = calloc(wordsSize[taskIndex], sizeof(Item));
-            MPI_Irecv(wordsList[taskIndex], wordsSize[taskIndex], itemType, taskIndex + 1, TAG, MPI_COMM_WORLD,  &requests[taskIndex]);
-        }
-        for (taskIndex = 0; taskIndex < num_processes; taskIndex++) {
-            MPI_Wait(&requests[taskIndex], &wordsListStatus);
-            int position = 0;
-            int i;
-            for (i = 0; i < wordsSize[taskIndex]; i++) {
-                avl = addToAVL(avl, wordsList[taskIndex][i], compareByName);
-            }
-            free(wordsList[taskIndex]);
-        }
+        avl = receiveDataFromClients(avl, num_processes, wordsList, wordsSize, itemType, requests);
 
         free(requests);
         free(wordsList);
@@ -624,7 +611,7 @@ int main(int argc, char **argv) {
         MPI_Unpack(packMessage, PACK_SIZE, &position, &task -> size, 1, MPI_INT, MPI_COMM_WORLD);
         task -> subTasks = calloc(task -> size, sizeof(SubTask));
         MPI_Unpack(packMessage, PACK_SIZE, &position, task -> subTasks, task -> size, subTaskType, MPI_COMM_WORLD);
-        processTasks(task, &subTask, avl, &wordsList, &wordsListSize, &size, &rank);
+        avl = processTasks(task, &subTask, avl, &wordsList, &wordsListSize, &size, &rank);
 
         free(task);
         free(packMessage);
@@ -661,11 +648,134 @@ typedef struct {
 ```
 
 # Correttezza dell'algoritmo
-
+La correttezza non è stata formalmente provata ma sono state fatte diverse prove sia con vari file di input semplici (così da poter controllare a mano la correttezza) sia con un diverso numero di processi e i risultati sono stati uguali per ogni esecuzione.
+I file di input per i test si trovano nella cartella files/tests.
 
 # Benchmarks
+Sono stati eseguiti test relativi sia alla scalabilità forte che alla scalabilità debole. Per entrambi i test è stato utilizzato il seguente file ```input.txt```. I file di testo sono stati facilmente reperiti sul web.
+
+```
+files/01-The_Fellowship_Of_The_Ring.txt
+files/02-The_Two_Towers.txt
+files/03-The_Return_Of_The_King.txt
+files/bible.txt
+files/Book 1 - The Philosopher's Stone.txt
+files/Book 2 - The Chamber of Secrets.txt
+files/Book 3 - The Prisoner of Azkaban.txt
+files/Book 4 - The Goblet of Fire.txt
+files/Book 5 - The Order of the Phoenix.txt
+files/Book 6 - The Half Blood Prince.txt
+files/Book 7 - The Deathly Hallows.txt
+files/divina commedia.txt
+files/610_parole_HP.txt
+files/1000_parole_italiane.txt
+files/6000_parole_italiane.txt
+files/280000_parole_italiane.txt
+files/all hp books.txt
+```
+
+I test sono stati eseguiti con un cluster di 4 macchine AWS di tipo EC2 t2.xlarge dotate di 4 vCPUs e 16GB di ram.
+Sono stati eseguiti test con due diverse opzioni di scheduling:
+* by slot: un certo carico di lavoro viene assegnato ad un processore diverso solo quando tutti gli slot del processore "precedente" sono pieni. È attivabile avviando mpicc con l'opzione --map-by slot;
+* by node: un certo carico di lavoro viene assegnato in logica round robin a tutti i processori coinvolti. È attivabile avviando mpicc con l'opzione --map-by node.
+
 ## Scalabilità forte
+### Test con una taglia totale di 24.1Mb
+| # processors  | Tyme by slot (seconds)    | Time by node (seconds)    | Speed up by slot  | Speed up by node  |
+|:-------------:|:-------------------------:|:-------------------------:|:-----------------:|:-----------------:|
+| 1             | 8.6                       | 8.638                     | 1                 | 1                 |
+| 2             | 4.572                     | 4.572                     | 1.881             | 1.889             |
+| 3             | 3.03                      | 3.024                     | 2.838             | 2.856             |
+| 4             | 2.454                     | 2.42                      | 3.504             | 3.569             |
+| 5             | 2.336                     | 2.282                     | 3.682             | 3.785             |
+| 6             | 2.205                     | 2.084                     | 3.9               | 4.145             |
+| 7             | 2.117                     | 2.002                     | 4.062             | 4.315             |
+| 8             | 2.036                     | 1.888                     | 4.224             | 4.575             |
+| 9             | 1.94                      | 1.94                      | 4.433             | 4.453             |
+| 10            | 1.892                     | 1.888                     | 4.545             | 4.575             |
+| 11            | 1.962                     | 1.948                     | 4.383             | 4.434             |
+| 12            | 1.958                     | 1.96                      | 4.392             | 4.407             |
+| 13            | 2.038                     | 1.98                      | 4.22              | 4.368             |
+| 14            | 2.04                      | 2.02                      | 4.216             | 4.276             |
+| 15            | 2.084                     | 1.982                     | 4.127             | 4.358             |
+![image info](./Grafici/Strong%20scalability%20-%20total%20files%20size%2024.1Mb.jpg)
+
+#### Speed up
+![image info](./Grafici/Strong%20scalability%20speed%20up%20-%20total%20files%20size%2024.1Mb.jpg)
+
+### Test con una taglia totale di 48.2Mb
+| # processors  | Tyme by slot (seconds)    | Time by node (seconds)    | Speed up by slot  | Speed up by node  |
+|:-------------:|:-------------------------:|:-------------------------:|:-----------------:|:-----------------:|
+| 1             | 17.174                    | 8.638                     | 1                 | 1                 |
+| 2             | 8,728                     | 8,666                     | 1,968             | 1,969             |
+| 3             | 6,006                     | 6,002                     | 2,859             | 2,843             |
+| 4             | 4,936                     | 4,926                     | 3,479             | 3,464             |
+| 5             | 4,226                     | 4,25                      | 4,064             | 4,015             |
+| 6             | 3,652                     | 3,946                     | 4,703             | 4,324             |
+| 7             | 3,398                     | 3,516                     | 5,054             | 4,853             |
+| 8             | 3,178                     | 3,186                     | 5,404             | 5,356             |
+| 9             | 3,152                     | 3,156                     | 5,449             | 5,407             |
+| 10            | 3,222                     | 3,154                     | 5,33              | 5,41              |
+| 11            | 3,216                     | 3,226                     | 5,34              | 5,29              |
+| 12            | 4,124                     | 4,46                      | 4,164             | 3,826             |
+| 13            | 3,456                     | 3,37                      | 4,969             | 5,064             |
+| 14            | 4,278                     | 4,282                     | 4,014             | 3,985             |
+| 15            | 3,396                     | 4,18                      | 5,057             | 4,082             |
+![image info](./Grafici/Strong%20scalability%20-%20total%20files%20size%2048.2Mb.jpg)
+
+#### Speed up
+![image info](./Grafici/Strong%20scalability%20speed%20up%20-%20total%20files%20size%2048.2Mb.jpg)
 
 ## Scalabilità debole
+### Test con una taglia totale di 15.2Mb
+| # processors  | Total file size | Tyme by slot (seconds)    | Time by node (seconds)    | Speed up by slot  | Speed up by node  |
+|:-------------:|:---------------:|:-------------------------:|:-------------------------:|:-----------------:|:-----------------:|
+| 1             | 15,2            | 5,09                      | 5,12                      | 1                 | 1                 |
+| 2             | 30,4            | 5,41                      | 5,45                      | 0,941             | 0,939             |
+| 3             | 45,6            | 5,7                       | 5,66                      | 0,893             | 0,905             |
+| 4             | 60,8            | 7,05                      | 7,09                      | 0,722             | 0,722             |
+| 5             | 76              | 8,46                      | 8,45                      | 0,602             | 0,606             |
+| 6             | 91,2            | 9,49                      | 9,91                      | 0,536             | 0,517             |
+| 7             | 106,4           | 11,23                     | 11,26                     | 0,453             | 0,455             |
+| 8             | 121,6           | 12,54                     | 12,6                      | 0,406             | 0,406             |
+| 9             | 136,8           | 13,96                     | 13,88                     | 0,365             | 0,369             |
+| 10            | 152             | 15,63                     | 15,63                     | 0,326             | 0,328             |
+| 11            | 167,2           | 16,88                     | 16,95                     | 0,302             | 0,302             |
+| 12            | 182,4           | 18,37                     | 18,16                     | 0,277             | 0,282             |
+| 13            | 197,6           | 19,5                      | 19,72                     | 0,261             | 0,26              |
+| 14            | 212,8           | 20,89                     | 20,94                     | 0,244             | 0,245             |
+| 15            | 228             | 22,26                     | 22,42                     | 0,229             | 0,228             |
+![image info](./Grafici/Weak%20scalability%20-%20size%20per%20process%2015.2Mb.jpg)
+
+
+#### Efficiency
+![image info](./Grafici/Weak%20scalability%20efficiency%20-%20size%20per%20process%2015.2Mb.jpg)
+
+### Test con una taglia totale di 30Mb
+| # processors  | Total file size | Tyme by slot (seconds)    | Time by node (seconds)    | Speed up by slot  | Speed up by node  |
+|:-------------:|:---------------:|:-------------------------:|:-------------------------:|:-----------------:|:-----------------:|
+| 1             |30              | 8,87                       | 8,97                      | 1                 | 1                 |
+| 2             |60              | 9,33                       | 9,22                      | 0,951             | 0,973             |
+| 3             |90              | 9,52                       | 9,53                      | 0,932             | 0,941             |
+| 4             |120             | 10,95                      | 10,94                     | 0,81              | 0,82              |
+| 5             |150             | 12,38                      | 12,31                     | 0,716             | 0,729             |
+| 6             |180             | 13,73                      | 13,75                     | 0,646             | 0,652             |
+| 7             |210             | 15,16                      | 15,14                     | 0,585             | 0,592             |
+| 8             |240             | 16,55                      | 16,52                     | 0,536             | 0,543             |
+| 9             |270             | 18,09                      | 17,83                     | 0,49              | 0,503             |
+| 10            |300             | 19,25                      | 19,45                     | 0,461             | 0,461             |
+| 11            |330             | 20,71                      | 20,9                      | 0,428             | 0,429             |
+| 12            |360             | 22,15                      | 22,18                     | 0,4               | 0,404             |
+| 13            |390             | 23,95                      | 23,41                     | 0,37              | 0,383             |
+| 14            |420             | 24,73                      | 24,98                     | 0,359             | 0,359             |
+| 15            |450             | 26,16                      | 26,11                     | 0,339             | 0,344             |
+
+![image info](./Grafici/Weak%20scalability%20-%20size%20per%20process%2030Mb.jpg)
+
+
+#### Efficiency
+![image info](./Grafici/Weak%20scalability%20efficiency%20-%20size%20per%20process%2030Mb.jpg)
 
 # Conclusioni
+A seguito di questi test si può dedurre che la parallelizzazione offre vantaggi considerevoli. Nel test di scalabilità forte con dimensione di 48.2Mb si può notare che Già con 12 processori il tempo necessario per l'elaborazione risale lentamente, questo è dovuto all'overhead necessario per lo scambio di dati tra i vari processori. Tale comportamento sarebbe più evidente con file di dimensioni maggiori che purtroppo non è stato possibile utilizzare a causa della memoria necessaria al programma per poter funzionare. Con file troppo grandi infatti il programma terminerebbe la memoria, nonostante tutti gli accorgimenti sull'utilizzo della stessa. È tuttavia ancora possibile fare altri miglioramenti su di essa rimuovendo le poche allocazioni statiche di array che sono rimaste e liberandola quando questa non è più necessaria. Per quanto riguarda questo aspetto purtroppo è presente una sorta di "collo di bottiglia" nel senso che anche se un processo client invia i dati al master e subito dopo libera la memora (come viene già fatto) il processo master dovrebbe comunque mantenere in memoria una quantità considerevole di informazioni (e di strutture dati) per poter ordinare le parole e poter scrivere il CSV, per cui nel caso di file molto grandi purtroppo la memoria termina.
+Per quanto riguarda il tempo di esecuzione c'è una piccola perdita di tempo dovuta al fatto che il master deve riordinare tutte le parole che vengono ricevute dai client prima alfabeticamente (in modo da poter aggiurnare il contatore di parole simili trovate in altri file) e poi per numero di occorrenze (per poterle stampare in ordine decrescente). Nonostante ogni processo client ordini man mano le parole alfabeticamente è necessaria un altra operazione di ordinamento da parte del master perché la divisione delle parole tra i processi non è fatta per ordine alfabetico (e sarebbe anche troppo complesso, computazionalmente parlando, farlo).
