@@ -698,6 +698,7 @@ Sono stati eseguiti test con due diverse opzioni di scheduling:
 | 13            | 2.038                     | 1.98                      | 4.22              | 4.368             |
 | 14            | 2.04                      | 2.02                      | 4.216             | 4.276             |
 | 15            | 2.084                     | 1.982                     | 4.127             | 4.358             |
+
 ![image info](./Grafici/Strong%20scalability%20-%20total%20files%20size%2024.1Mb.jpg)
 
 #### Speed up
@@ -721,6 +722,7 @@ Sono stati eseguiti test con due diverse opzioni di scheduling:
 | 13            | 3,456                     | 3,37                      | 4,969             | 5,064             |
 | 14            | 4,278                     | 4,282                     | 4,014             | 3,985             |
 | 15            | 3,396                     | 4,18                      | 5,057             | 4,082             |
+
 ![image info](./Grafici/Strong%20scalability%20-%20total%20files%20size%2048.2Mb.jpg)
 
 #### Speed up
@@ -745,6 +747,7 @@ Sono stati eseguiti test con due diverse opzioni di scheduling:
 | 13            | 197,6           | 19,5                      | 19,72                     | 0,261             | 0,26              |
 | 14            | 212,8           | 20,89                     | 20,94                     | 0,244             | 0,245             |
 | 15            | 228             | 22,26                     | 22,42                     | 0,229             | 0,228             |
+
 ![image info](./Grafici/Weak%20scalability%20-%20size%20per%20process%2015.2Mb.jpg)
 
 
