@@ -1,12 +1,45 @@
+
+It is nicely demonstrated in the Table of Contents of the Markdown Cheatsheet.
+
+##### Table of Contents  
+* [Problema](#problem)
+* [Soluzione](#solution)
+    * [Distribuire lo stesso numero di parole tra tutti i processori](#distnum)
+    * [Distribuire lo stesso numero di bytes tra tutti i processori](#distbytes)
+* [Dettagli implementativi](#details)
+    * [Creazione dei Task da assegnare ai processi client](#taskcreation)
+        * [Lettura dei file di input e calcolo bytes per ognuno](#inputreading)
+        * [Calcolo del numero di bytes per ogni processo](#calcnumbytes)
+        * [Divisione dei file per processo in base al numero di byte per ognuno](#filedivision)
+    * [Invio informazioni ai processi client](#sendinfos)
+    * [Conteggio parole da parte dei processi client](#countingwords)
+    * [Invio conteggio parole al master](#sendingcounts)
+    * [Ordinamento parole da parte del master](#wordsordering)
+    * [Creazione CSV](#csvcreation)
+    * [Funzione main](#mainfunction)
+* [Correttezza dell'algoritmo](#algorithmcorrectness)
+* [Benchmarks](#bench)
+* [Scalabilità forte](#strongscalability)
+    * [Test con una taglia totale di 24.1Mb](#test24)
+    * [Test con una taglia totale di 48.2Mb](#test48)
+* [Scalabilità debole](#weakscalability)
+    * [Test con una taglia totale di 15.2Mb](#test15)
+    * [Test con una taglia totale di 30Mb](#test30)
+* [Conclusioni](#conclusions)
+
+
+<a name="problem"/></a>
 # Problema
 L'obiettivo di word count è quello di contare il numero di parole che sono presenti in uno o più file al fine di raggiungere vari obiettivi come per esempio la raccolta di dati a fini statistici o la risoluzione di problemi legati al mondo dell'editoria o del giornalismo. Spesso i file di cui si vogliono contare le parole sono molto grandi, basti pensare per esempio ad un libro il quale può contenere anche milioni di parole, ragion per cui eseguire le operazioni di conta delle parole con un solo processore (o thread o processo) possono richiedere molto tempo. Si necessita quindi di un approccio distribuito che riesca a fornire delle prestazioni ben più elevate. Word count utilizza MPI per eseguire queste operazioni e contare le parole nel minor tempo possibile.
 
+<a name="solution"/></a>
 # Soluzione
 L'idea della soluzione è molto semplice: dividere il carico di lavoro equamente tra tutti i processori coinvolti nell'elaborazione così che non ci siano processori che debbano eseguire carichi di lavoro più elevati mentre altri invece sono in idle perché hanno terminato il proprio lavoro, e quindi velocizzare l'elaborazione.
 A tal proposito le strade percorribili sono di due tipi:
 * Distribuire lo stesso numero di parole tra tutti i processori;
 * Distribuire lo stesso numero di bytes tra tutti i processori.
 
+<a name="distnum"/></a>
 ## Distribuire lo stesso numero di parole tra tutti i processori
 Questo approccio è stato subito scartato in quanto non era un operazione semplice determinare quante parole fossero presenti nel file e distribuirle tra tutti i processori. Anche in questo caso erano possibili due soluzioni:
 * Analisi statistica sul numero di byte;
@@ -16,6 +49,7 @@ Nel primo caso si vuole provare a calcolare il numero di parole presenti nel doc
 
 La seconda soluzione avrebbe permesso di poter asegnare lo stesso numero di parole a tutti i processori, ma altri problemi sorgono per questa soluzione: il processo master avrebbe dovuto leggere tutti i file per contare le parole impiegando tanto tempo e non era inoltre garantito che il lavoro fosse equamente distribuito in quanto le parole possono avere lunghezze molto diverse tra di loro.
 
+<a name="distbytes"/></a>
 ## Distribuire lo stesso numero di bytes tra tutti i processori
 La soluzione è stata quella di dividere il numero di bytes equamente tra tutti i processori. Il numero di bytes di un file è facilmente leggibile e dal momento che un byte corrisponde ad un carattere (fatta eccezione per il carattere di carriage return) non sono state necessarie particolari conversioni.
 Ad ogni processo vengono inviate tre informazioni:
@@ -32,6 +66,7 @@ Questi tre elementi sono stati racchiusi un una struttura dati chiamata SubTask 
 Se l'offset di fine non corrisponde con la fine di una parola il processo che sta leggendo continua fino a quando non trova un carattere di carriage return.
 Se l'offet di inizio non corrisponde con l'inizio di una parola il processo che sta leggendo va avanti nella lettura e scarta tutto fino a quando non legge un carattere di carriage return. Scarta tutto perché ci sarà il processo precedente che avrà già letto quella parola.
 
+<a name="details"/></a>
 # Dettagli implementativi
 Di seguito è riportato il main del programma che è diviso in diverse fasi:
 * Creazione dei Task da assegnare ai processi client;
@@ -41,12 +76,14 @@ Di seguito è riportato il main del programma che è diviso in diverse fasi:
 * Ordinamento parole da parte del master;
 * Creazione CSV.
 
+<a name="taskcreation"/></a>
 ## Creazione dei Task da assegnare ai processi client
 Questa fase può essere divisa in 
 * Lettura dei file di input e calcolo bytes per ognuno;
 * Calcolo del numero di bytes per ogni processo;
 * Divisione dei file per processo in base al numero di byte per ognuno.
 
+<a name="inputreading"/></a>
 ### Lettura dei file di input e calcolo bytes per ognuno
 Questa operazione viene eseguita con la funzione ```getFilesInfos()``` la quale chiama a sua volta la funzione ```readFileNamesFromFile(fileNames)``` che si occupa della lettura dell'input da file.
 Dopo aver letto l'input si procede al recupero della dimensione dei singoli file di testo (contenuti nel file di input).
@@ -171,6 +208,7 @@ files/280000_parole_italiane.txt
 files/all hp books.txt
 ```
 
+<a name="calcnumbytes"/></a>
 ### Calcolo del numero di bytes per ogni processo
 Successivamente è necessario fare la somma di tutti i bytes per riuscire a dividerli equamente tra tutti i processi.
 
@@ -216,6 +254,7 @@ Il risultato prodotto sarà il seguente
 [Processo 0] >> Process 2 should read: 8426160 bytes
 ```
 
+<a name="filedivision"/></a>
 ### Divisione dei file per processo in base al numero di byte per ognuno
 Come ultimo passaggio bisogna dividere logicamente i file e organizzarli in triple
 * Nome del file da leggere;
@@ -339,6 +378,7 @@ Processo2 = (3326678 - 1872164) + 6971646 = 8.426.160
 :warning: NOTA:
 Tra 0 e 1025381 ci sono in realtà 1025382 numeri ed è importante quindi sommare uno ad ogni valore quando si fa il calcolo di cui sopra.
 
+<a name="sendinfos"/></a>
 ## Invio informazioni ai processi client
 Una volta fatta la divisione occorre inviare questi dati ai processi client così che possano iniziare il loro lavoro.
 È stato necessario inviare prima la dimensione dell'array di SubTasks e poi l'array stesso perché i processi client non potevano conoscere la dimensione dei dati da ricevere. Per rendere più veloci queste due operazioni sono state unite insieme (tramita MPI_Pack) le informazioni sulla size dell'array e l'array stesso in modo da ridurre al minimo il numero di comunicazioni.
@@ -366,6 +406,7 @@ void scatterTasks(Task *taskArray, int taskArrayCurrentSize, MPI_Datatype subTas
 }
 ```
 
+<a name="countingwords"/></a>
 ## Conteggio parole da parte dei processi client
 Una volta che i processi client hanno ricevuto i dati possono iniziare a contare le parole. In accordo a quanto già accennato i processi riescono a determinare se la posizione di partenza corrisponde all'inizio di una parola oppuure no:
 * Se il processo ha come valore di startFromBytes 0 allora sicuramente sta leggendo la parola dall'inizio;
@@ -447,6 +488,7 @@ int isCharacter(char ch) {
 }
 ```
 
+<a name="sendingcounts"/></a>
 ## Invio conteggio parole al master
 L'invio dei dati al master avviene sempre tramite comunicazione asincrona.
 
@@ -465,6 +507,7 @@ logMessage(message, rank);
 free(wordsList);
 ```
 
+<a name="wordsordering"/></a>
 ## Ordinamento parole da parte del master
 Il master riceve delle liste di Item da parte di client e deve necessariamente unirle per poter ordinare i dati.
 
@@ -518,6 +561,7 @@ struct BTreeNode* addToAVL(struct BTreeNode *btree, Item item, int (*compareFunc
 
 :information_source: In un primo momento era stato utilizzato un semplice BTree che però dava problemi nel caso in cui l'input fosse già ordinato (caso peggiore) riducendo di fatto le performance a quelle di una lista (l'albero si sviluppava solo a sinistra o solo a destra). L'AVL risolve questo problema eseguendo una rotazione dei nodi nel momento in cui gli elementi si sviluppano solamente verso sinistra o solamente verso destra.
 
+<a name="csvcreation"/></a>
 ## Creazione CSV
 La funzione createCSV si occupa di produrre il CSV di output.
 ```c
@@ -535,6 +579,7 @@ void createCSV(struct BTreeNode *wordsTree, long size, int rank, long *wordsNumb
 }
 ```
 
+<a name="mainfunction"/></a>
 ## Funzione main
 
 ```c
@@ -647,10 +692,12 @@ typedef struct {
 } SubTask;
 ```
 
+<a name="algorithmcorrectness"/></a>
 # Correttezza dell'algoritmo
 La correttezza non è stata formalmente provata ma sono state fatte diverse prove sia con vari file di input semplici (così da poter controllare a mano la correttezza) sia con un diverso numero di processi e i risultati sono stati uguali per ogni esecuzione.
 I file di input per i test si trovano nella cartella files/tests.
 
+<a name="bench"/></a>
 # Benchmarks
 Sono stati eseguiti test relativi sia alla scalabilità forte che alla scalabilità debole. Per entrambi i test è stato utilizzato il seguente file ```input.txt```. I file di testo sono stati facilmente reperiti sul web.
 
@@ -679,7 +726,9 @@ Sono stati eseguiti test con due diverse opzioni di scheduling:
 * by slot: un certo carico di lavoro viene assegnato ad un processore diverso solo quando tutti gli slot del processore "precedente" sono pieni. È attivabile avviando mpicc con l'opzione --map-by slot;
 * by node: un certo carico di lavoro viene assegnato in logica round robin a tutti i processori coinvolti. È attivabile avviando mpicc con l'opzione --map-by node.
 
+<a name="strongscalability"/></a>
 ## Scalabilità forte
+<a name="test24"/></a>
 ### Test con una taglia totale di 24.1Mb
 | # processors  | Tyme by slot (seconds)    | Time by node (seconds)    | Speed up by slot  | Speed up by node  |
 |:-------------:|:-------------------------:|:-------------------------:|:-----------------:|:-----------------:|
@@ -704,6 +753,7 @@ Sono stati eseguiti test con due diverse opzioni di scheduling:
 #### Speed up
 ![image info](./Grafici/Strong%20scalability%20speed%20up%20-%20total%20files%20size%2024.1Mb.jpg)
 
+<a name="test48"/></a>
 ### Test con una taglia totale di 48.2Mb
 | # processors  | Tyme by slot (seconds)    | Time by node (seconds)    | Speed up by slot  | Speed up by node  |
 |:-------------:|:-------------------------:|:-------------------------:|:-----------------:|:-----------------:|
@@ -728,7 +778,9 @@ Sono stati eseguiti test con due diverse opzioni di scheduling:
 #### Speed up
 ![image info](./Grafici/Strong%20scalability%20speed%20up%20-%20total%20files%20size%2048.2Mb.jpg)
 
+<a name="weakscalability"/></a>
 ## Scalabilità debole
+<a name="test15"/></a>
 ### Test con una taglia totale di 15.2Mb
 | # processors  | Total file size | Tyme by slot (seconds)    | Time by node (seconds)    | Speed up by slot  | Speed up by node  |
 |:-------------:|:---------------:|:-------------------------:|:-------------------------:|:-----------------:|:-----------------:|
@@ -754,6 +806,7 @@ Sono stati eseguiti test con due diverse opzioni di scheduling:
 #### Efficiency
 ![image info](./Grafici/Weak%20scalability%20efficiency%20-%20size%20per%20process%2015.2Mb.jpg)
 
+<a name="test30"/></a>
 ### Test con una taglia totale di 30Mb
 | # processors  | Total file size | Tyme by slot (seconds)    | Time by node (seconds)    | Speed up by slot  | Speed up by node  |
 |:-------------:|:---------------:|:-------------------------:|:-------------------------:|:-----------------:|:-----------------:|
@@ -779,6 +832,8 @@ Sono stati eseguiti test con due diverse opzioni di scheduling:
 #### Efficiency
 ![image info](./Grafici/Weak%20scalability%20efficiency%20-%20size%20per%20process%2030Mb.jpg)
 
+
+<a name="conclusions"/></a>
 # Conclusioni
 A seguito di questi test si può dedurre che la parallelizzazione offre vantaggi considerevoli. Nel test di scalabilità forte con dimensione di 48.2Mb si può notare che già con 12 processori il tempo necessario per l'elaborazione risale lentamente, questo è dovuto all'overhead necessario per lo scambio di dati tra i vari processori. Tale comportamento sarebbe più evidente con file di dimensioni maggiori che purtroppo non è stato possibile utilizzare a causa della memoria necessaria al programma per poter funzionare. Con file troppo grandi infatti il programma terminerebbe la memoria, nonostante tutti gli accorgimenti sull'utilizzo della stessa. È tuttavia ancora possibile fare altri miglioramenti su di essa rimuovendo le poche allocazioni statiche di array che sono rimaste e liberandola quando questa non è più necessaria. Per quanto riguarda questo aspetto purtroppo è presente una sorta di "collo di bottiglia" nel senso che anche se un processo client invia i dati al master e subito dopo libera la memora (come viene già fatto) il processo master dovrebbe comunque mantenere in memoria una quantità considerevole di informazioni (e di strutture dati) per poter ordinare le parole e poter scrivere il CSV, per cui nel caso di file molto grandi purtroppo la memoria termina.
 Per quanto riguarda il tempo di esecuzione c'è una piccola perdita di tempo dovuta al fatto che il master deve riordinare tutte le parole che vengono ricevute dai client prima alfabeticamente (in modo da poter aggiurnare il contatore di parole simili trovate in altri file) e poi per numero di occorrenze (per poterle stampare in ordine decrescente). Nonostante ogni processo client ordini man mano le parole alfabeticamente è necessaria un altra operazione di ordinamento da parte del master perché la divisione delle parole tra i processi non è fatta per ordine alfabetico (e sarebbe anche troppo complesso, computazionalmente parlando, farlo).
