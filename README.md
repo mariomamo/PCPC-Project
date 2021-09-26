@@ -1,5 +1,4 @@
-
-It is nicely demonstrated in the Table of Contents of the Markdown Cheatsheet.
+# Word count - Mario Offertucci
 
 ##### Table of Contents  
 * [Problema](#problem)
