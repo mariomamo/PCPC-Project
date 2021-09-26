@@ -407,7 +407,7 @@ void scatterTasks(Task *taskArray, int taskArrayCurrentSize, MPI_Datatype subTas
 
 <a name="countingwords"/></a>
 ## Conteggio parole da parte dei processi client
-Una volta che i processi client hanno ricevuto i dati possono iniziare a contare le parole. In accordo a quanto già accennato i processi riescono a determinare se la posizione di partenza corrisponde all'inizio di una parola oppuure no:
+Una volta che i processi client hanno ricevuto i dati possono iniziare a contare le parole. In accordo a quanto già accennato i processi riescono a determinare se la posizione di partenza corrisponde all'inizio di una parola oppure no:
 * Se il processo ha come valore di startFromBytes 0 allora sicuramente sta leggendo la parola dall'inizio;
 * Altrimenti se il carattere precedente al suo startFromBytes è uno spazio o uno '\n' allora sta leggendo la parola dall'inizio;
 * Se il carattere precedente è un altro carattere non sta leggendo la parola dall'inizio e la scarta perché sarà letta da un altro processo.
@@ -683,14 +683,6 @@ int main(int argc, char **argv) {
 }
 ```
 
-```c
-typedef struct {
-    char fileName[MAX_FILE_NAME_LENGTH];
-    long startFromBytes;
-    long endToBytes;
-} SubTask;
-```
-
 <a name="algorithmcorrectness"/></a>
 # Correttezza dell'algoritmo
 La correttezza non è stata formalmente provata ma sono state fatte diverse prove sia con vari file di input semplici (così da poter controllare a mano la correttezza) sia con un diverso numero di processi e i risultati sono stati uguali per ogni esecuzione.
@@ -835,4 +827,4 @@ Sono stati eseguiti test con due diverse opzioni di scheduling:
 <a name="conclusions"/></a>
 # Conclusioni
 A seguito di questi test si può dedurre che la parallelizzazione offre vantaggi considerevoli. Nel test di scalabilità forte con dimensione di 48.2Mb si può notare che già con 12 processori il tempo necessario per l'elaborazione risale lentamente, questo è dovuto all'overhead necessario per lo scambio di dati tra i vari processori. Tale comportamento sarebbe più evidente con file di dimensioni maggiori che purtroppo non è stato possibile utilizzare a causa della memoria necessaria al programma per poter funzionare. Con file troppo grandi infatti il programma terminerebbe la memoria, nonostante tutti gli accorgimenti sull'utilizzo della stessa. È tuttavia ancora possibile fare altri miglioramenti su di essa rimuovendo le poche allocazioni statiche di array che sono rimaste e liberandola quando questa non è più necessaria. Per quanto riguarda questo aspetto purtroppo è presente una sorta di "collo di bottiglia" nel senso che anche se un processo client invia i dati al master e subito dopo libera la memora (come viene già fatto) il processo master dovrebbe comunque mantenere in memoria una quantità considerevole di informazioni (e di strutture dati) per poter ordinare le parole e poter scrivere il CSV, per cui nel caso di file molto grandi purtroppo la memoria termina.
-Per quanto riguarda il tempo di esecuzione c'è una piccola perdita di tempo dovuta al fatto che il master deve riordinare tutte le parole che vengono ricevute dai client prima alfabeticamente (in modo da poter aggiurnare il contatore di parole simili trovate in altri file) e poi per numero di occorrenze (per poterle stampare in ordine decrescente). Nonostante ogni processo client ordini man mano le parole alfabeticamente è necessaria un altra operazione di ordinamento da parte del master perché la divisione delle parole tra i processi non è fatta per ordine alfabetico (e sarebbe anche troppo complesso, computazionalmente parlando, farlo).
+Per quanto riguarda il tempo di esecuzione c'è una piccola perdita di tempo dovuta al fatto che il master deve riordinare tutte le parole che vengono ricevute dai client prima alfabeticamente (in modo da poter aggiornare il contatore di parole simili trovate in altri file) e poi per numero di occorrenze (per poterle stampare in ordine decrescente). Nonostante ogni processo client ordini man mano le parole alfabeticamente è necessaria un'altra operazione di ordinamento da parte del master perché la divisione delle parole tra i processi non è fatta per ordine alfabetico (e sarebbe anche troppo complesso, computazionalmente parlando, farlo).
